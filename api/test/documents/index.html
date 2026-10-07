@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Documents</title>
+</head>
+
+<body>
+    <input type="file" id="file" name="file">
+    <button onclick="uploadDocument()">Upload Document</button>
+    <p id="result"></p>
+
+    <script>
+        function uploadDocument() {
+            const file = document.getElementById('file').files[0];
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('ownerId', 1);
+            fetch('http://localhost:3000/api/documents/upload', {
+                method: 'POST',
+                body: formData
+            })
+                .then(response => response.json())
+                .then(data => document.getElementById('result').textContent = JSON.stringify(data))
+            //.catch(error => console.error('Error:', error));
+        }
+    </script>
+</body>
+
+</html>

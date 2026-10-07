@@ -44,17 +44,19 @@ export class DocumentService {
         };
     }
 
+    //get documents by parameters, if none get all
     async getDocuments(name?: string): Promise<Object> {
         const where: any = {};
         if (name) {
             where.fileName = name;
         }
         const documents = await this.prismaService.document.findMany({
-            where
+            where: Object.keys(where).length ? where : undefined
         });
         return documents;
     }
 
+    //get by uuid
     async getDocumentByUuid(uuid: string): Promise<Object> {
         const document = await this.prismaService.document.findUnique({
             where: { id: uuid }

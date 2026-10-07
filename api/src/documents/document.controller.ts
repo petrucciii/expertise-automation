@@ -26,7 +26,7 @@ export class DocumentController {
     }
 
     @Get()
-    async getAllDocuments(@Query('name') name?: string): Promise<Object> {
+    async getDocuments(@Query('name') name?: string): Promise<Object> {
         return this.documentService.getDocuments(name);
     }
 
