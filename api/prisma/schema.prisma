@@ -44,7 +44,7 @@ model Chat {
 
 model Message {
   id         String          @id @default(uuid(7)) @db.Uuid
-  chatId     String
+  chatId     String          @db.Uuid
   chat       Chat            @relation(fields: [chatId], references: [id], onDelete: Cascade)
   role       MessageRole
   content    String          @db.Text
@@ -63,6 +63,7 @@ model Document {
   fileName       String
   mimeType       String
   path           String
+  hash           String
   created_at     DateTime        @default(now())
   updated_at     DateTime        @updatedAt
   deleted_at     DateTime?
@@ -71,9 +72,9 @@ model Document {
 }
 
 model ChatDocument {
-  chatId     String
+  chatId     String   @db.Uuid
   chat       Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)
-  documentId String
+  documentId String   @db.Uuid
   document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
   attachedAt DateTime @default(now())
 
@@ -83,9 +84,9 @@ model ChatDocument {
 
 model MessageSource {
   id         String   @id @default(cuid())
-  messageId  String
+  messageId  String   @db.Uuid
   message    Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
-  documentId String
+  documentId String   @db.Uuid
   document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
   pageNumber Int?
   excerpt    String?  @db.Text
