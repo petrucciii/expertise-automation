@@ -1,0 +1,17 @@
+.env
+.env.*
+!.env.example
+
+node_modules/
+.agents/
+.claude/
+.windsurf/
+
+
+*.tsbuildinfo
+
+logs
+.log
+
+._*
+.DS_Store

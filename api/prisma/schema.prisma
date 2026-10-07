@@ -1,0 +1,95 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum MessageRole {
+  USER
+  AI
+}
+
+model User {
+  id         Int        @id @default(autoincrement())
+  email      String     @unique
+  password   String
+  chats      Chat[]
+  documents  Document[]
+  created_at DateTime   @default(now())
+  updated_at DateTime   @updatedAt
+  deleted_at DateTime?
+}
+
+model Chat {
+  id         String         @id @default(uuid(7)) @db.Uuid
+  title      String?
+  userId     Int
+  user       User           @relation(fields: [userId], references: [id], onDelete: Restrict)
+  messages   Message[]
+  documents  ChatDocument[]
+  created_at DateTime       @default(now())
+  updated_at DateTime       @updatedAt
+  deleted_at DateTime?
+
+  @@index([userId])
+}
+
+model Message {
+  id         String          @id @default(uuid(7)) @db.Uuid
+  chatId     String
+  chat       Chat            @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  role       MessageRole
+  content    String          @db.Text
+  sources    MessageSource[]
+  created_at DateTime        @default(now())
+  updated_at DateTime        @updatedAt
+  deleted_at DateTime?
+
+  @@index([chatId, created_at])
+}
+
+model Document {
+  id             String          @id @default(uuid(7)) @db.Uuid
+  ownerId        Int
+  owner          User            @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  fileName       String
+  mimeType       String
+  path           String
+  created_at     DateTime        @default(now())
+  updated_at     DateTime        @updatedAt
+  deleted_at     DateTime?
+  chatLinks      ChatDocument[]
+  messageSources MessageSource[]
+}
+
+model ChatDocument {
+  chatId     String
+  chat       Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  attachedAt DateTime @default(now())
+
+  @@id([chatId, documentId])
+  @@index([documentId])
+}
+
+model MessageSource {
+  id         String   @id @default(cuid())
+  messageId  String
+  message    Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  pageNumber Int?
+  excerpt    String?  @db.Text
+
+  @@index([messageId])
+  @@index([documentId])
+}
