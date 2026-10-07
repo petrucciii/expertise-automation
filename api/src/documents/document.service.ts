@@ -5,6 +5,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as crypto from 'crypto';
 
+
 @Injectable()
 export class DocumentService {
     constructor(private readonly prismaService: PrismaService) { }
@@ -56,7 +57,7 @@ export class DocumentService {
 
     async getDocumentByUuid(uuid: string): Promise<Object> {
         const document = await this.prismaService.document.findUnique({
-            where: { uuid }
+            where: { id: uuid }
         });
 
         if (!document) {

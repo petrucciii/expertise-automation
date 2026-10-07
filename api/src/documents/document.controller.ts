@@ -1,6 +1,7 @@
 import { Body, Controller, FileTypeValidator, MaxFileSizeValidator, ParseFilePipe, Query, Post, Get, Param, UploadedFile, UseInterceptors } from "@nestjs/common";
 import { DocumentService } from "./document.service.js";
 import { FileInterceptor } from "@nestjs/platform-express";
+import 'multer';
 
 @Controller('documents')
 export class DocumentController {

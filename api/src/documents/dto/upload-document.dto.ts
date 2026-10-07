@@ -1,4 +1,6 @@
-import { IsNotEmpty, IsString, IsInt, Type } from 'class-validator';
+import { IsNotEmpty, IsString, IsInt } from 'class-validator';
+import { Type } from 'class-transformer';
+
 
 export class UploadDocumentDto {
     @Type(() => Number)
