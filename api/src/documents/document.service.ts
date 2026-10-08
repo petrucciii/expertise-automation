@@ -111,7 +111,7 @@ export class DocumentService {
         }
 
         if (documentObj.mimeType === "application/pdf") {
-            //return await this.documentExtract.extractPDF(file);  //need to create
+            return await this.documentExtract.extractPDF(file);  //need to create
         } else if (documentObj.mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
             return await this.documentExtract.extractDocx(file);
         } else {
