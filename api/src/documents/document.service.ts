@@ -11,7 +11,7 @@ export class DocumentService {
     constructor(private readonly prismaService: PrismaService) { }
 
 
-    async uploadDocument(file: Express.Multer.File, ownerId: number): Promise<Object> {
+    async uploadDocument(file: Express.Multer.File, dto: UploadDocumentDto): Promise<Object> {
 
         const hash = crypto.createHash('sha256').update(file.buffer).digest('hex'); // hash of the file
 
@@ -21,22 +21,20 @@ export class DocumentService {
         }
 
 
-        const uploadDir = path.join(process.cwd(), 'documents', 'uploads'); // path to the folder where the file will be stored
+        const uploadDir = path.join('documents', 'uploads'); // path to the folder where the file will be stored
         await fs.mkdir(uploadDir, { recursive: true });// Create the folder if it doesn't exist
 
         const filePath = path.join(uploadDir, `${Date.now()}-${file.originalname}`); // path to the file
         await fs.writeFile(filePath, file.buffer);
 
-        const dto: UploadDocumentDto = {
-            ownerId: ownerId,
-            fileName: file.originalname,
-            mimeType: file.mimetype,
-            path: filePath,
-            hash: hash,
-        }
-
         const document = await this.prismaService.document.create({
-            data: dto
+            data: {
+                ownerId: dto.ownerId,
+                fileName: file.originalname,
+                mimeType: file.mimetype,
+                path: filePath,
+                hash: hash,
+            }
         });
 
         return {
@@ -50,9 +48,10 @@ export class DocumentService {
         if (name) {
             where.fileName = name;
         }
-        const documents = await this.prismaService.document.findMany({
-            where: Object.keys(where).length ? where : undefined
+        let documents = await this.prismaService.document.findMany({
+            where: Object.keys(where).length ? where : undefined //if 0 keys means no document so returns all
         });
+
         return documents;
     }
 
@@ -65,6 +64,11 @@ export class DocumentService {
         if (!document) {
             throw new NotFoundException('Document not found');
         }
+
+        //String buffered file
+        const content = Buffer.from(await fs.readFile(document.path)).toString('base64');
+        Object.assign(document, { fileContent: content }); //Add buffer to response
+
         return document;
     }
 }

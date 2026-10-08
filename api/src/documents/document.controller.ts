@@ -1,7 +1,9 @@
 import { Body, Controller, FileTypeValidator, MaxFileSizeValidator, ParseFilePipe, Query, Post, Get, Param, UploadedFile, UseInterceptors } from "@nestjs/common";
 import { DocumentService } from "./document.service.js";
 import { FileInterceptor } from "@nestjs/platform-express";
+import { UploadDocumentDto } from "./dto/upload-document.dto.js"
 import 'multer';
+;
 
 @Controller('documents')
 export class DocumentController {
@@ -20,9 +22,16 @@ export class DocumentController {
                 new MaxFileSizeValidator({ maxSize: 10 * 1024 * 1024 }),
             ],
         }),) file: Express.Multer.File,
-        @Body() body: any): Promise<Object> {
+        @Body() dto: UploadDocumentDto): Promise<Object> {
 
-        return this.documentService.uploadDocument(file, body.ownerId);
+        return this.documentService.uploadDocument(file, dto);
+    }
+
+    @Get(':uuid/download')
+    async getDocumentByUuid(
+        @Param('uuid') uuid: string
+    ): Promise<Object> {
+        return this.documentService.getDocumentByUuid(uuid);
     }
 
     @Get()
@@ -30,12 +39,7 @@ export class DocumentController {
         return this.documentService.getDocuments(name);
     }
 
-    @Get(':uuid')
-    async getDocumentByUuid(
-        @Param('uuid') uuid: string
-    ): Promise<Object> {
-        return this.documentService.getDocumentByUuid(uuid);
-    }
+
 }
 
 

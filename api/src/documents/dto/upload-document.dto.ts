@@ -7,20 +7,4 @@ export class UploadDocumentDto {
     @IsInt()
     @IsNotEmpty()
     ownerId: number;
-
-    @IsString()
-    @IsNotEmpty()
-    fileName: string;
-
-    @IsString()
-    @IsNotEmpty()
-    mimeType: string;
-
-    @IsString()
-    @IsNotEmpty()
-    path: string;
-
-    @IsString()
-    @IsNotEmpty()
-    hash: string;
 }
