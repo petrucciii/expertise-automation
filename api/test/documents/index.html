@@ -31,7 +31,7 @@
 
         body {
             background-color: var(--bg-color);
-            background-image: 
+            background-image:
                 radial-gradient(circle at 15% 15%, rgba(59, 130, 246, 0.12) 0%, transparent 40%),
                 radial-gradient(circle at 85% 85%, rgba(139, 92, 246, 0.1) 0%, transparent 40%);
             min-height: 100vh;
@@ -299,8 +299,15 @@
         }
 
         @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(-4px); }
-            to { opacity: 1; transform: translateY(0); }
+            from {
+                opacity: 0;
+                transform: translateY(-4px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
     </style>
 </head>
@@ -316,7 +323,9 @@
         <section class="card upload-section">
             <form id="uploadForm" class="upload-form" onsubmit="event.preventDefault(); handleUpload();">
                 <div class="file-input-wrapper">
-                    <input type="file" id="fileInput" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" required>
+                    <input type="file" id="fileInput"
+                        accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                        required>
                 </div>
                 <button type="submit" id="uploadBtn" class="btn btn-primary">
                     <span>Upload Document</span>
@@ -329,7 +338,8 @@
         <section class="card">
             <div class="list-header">
                 <h2>Your Documents</h2>
-                <button onclick="loadDocuments()" class="btn btn-sm btn-download" title="Refresh list">🔄 Refresh</button>
+                <button onclick="loadDocuments()" class="btn btn-sm btn-download" title="Refresh list">🔄
+                    Refresh</button>
             </div>
 
             <table class="doc-table">
@@ -413,6 +423,9 @@
                                 </button>
                                 <button class="btn btn-sm btn-delete" onclick="deleteDocument('${doc.id}')">
                                     🗑️ Delete
+                                </button>
+                                <button class="btn btn-sm btn-read" onclick="extractText('${doc.id}')">
+                                    📄 Extract Test
                                 </button>
                             </div>
                         </td>
@@ -498,6 +511,19 @@
             } catch (error) {
                 console.error(error);
                 showMessage('Error downloading document', true);
+            }
+        }
+
+        //Extract Text
+        async function extractText(uuid) {
+            try {
+                const res = await fetch(`${API_URL}/${uuid}/content`);
+                if (!res.ok) throw new Error('Failed to extract text');
+                const data = await res.json();
+                showMessage(data.content);
+            } catch (error) {
+                console.error(error);
+                showMessage('Error extracting text', true);
             }
         }
 
