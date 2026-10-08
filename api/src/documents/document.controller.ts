@@ -1,7 +1,8 @@
-import { Body, Controller, FileTypeValidator, MaxFileSizeValidator, ParseFilePipe, Query, Post, Get, Param, UploadedFile, UseInterceptors, Delete } from "@nestjs/common";
+import { Body, Controller, FileTypeValidator, MaxFileSizeValidator, ParseFilePipe, Query, Post, Get, Param, UploadedFile, UseInterceptors, Delete, HttpStatus, HttpCode } from "@nestjs/common";
 import { DocumentService } from "./document.service.js";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { UploadDocumentDto } from "./dto/upload-document.dto.js"
+import { GetDocumentDto } from "./dto/get-document.dto.js"
 import 'multer';
 ;
 
@@ -27,21 +28,28 @@ export class DocumentController {
         return this.documentService.uploadDocument(file, dto);
     }
 
-    @Get(':uuid/download')
+    @Get(':id/download')
     async getDocumentByUuid(
-        @Param('uuid') uuid: string
+        @Param() dto: GetDocumentDto
     ): Promise<Object> {
-        return this.documentService.getDocumentByUuid(uuid);
+        return this.documentService.getDocumentByUuid(dto);
+    }
+
+    @Get(':id/content')
+    async getDocumentContentByUuid(
+        @Param() dto: GetDocumentDto
+    ): Promise<Object> {
+        return this.documentService.getText(dto);
     }
 
     @Get()
-    async getDocuments(@Query('name') name?: string): Promise<Object> {
-        return this.documentService.getDocuments(name);
+    async getDocuments(@Query() dto?: GetDocumentDto): Promise<Object> {
+        return this.documentService.getDocuments(dto);
     }
 
-    @Delete(':uuid')
-    async deleteDocument(@Param('uuid') uuid: string): Promise<Object> {
-        return this.documentService.deleteDocument(uuid);
+    @Delete(':id')
+    async deleteDocument(@Param() dto: GetDocumentDto): Promise<Object> {
+        return this.documentService.deleteDocument(dto);
     }
 
 }

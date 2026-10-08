@@ -1,14 +1,18 @@
 import { ConflictException, Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { DocumentExtractService } from './document-extract.service.js';
 import { UploadDocumentDto } from './dto/upload-document.dto.js';
+
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as crypto from 'crypto';
+import { GetDocumentDto } from './dto/get-document.dto.js';
+
 
 
 @Injectable()
 export class DocumentService {
-    constructor(private readonly prismaService: PrismaService) { }
+    constructor(private readonly prismaService: PrismaService, private readonly documentExtract: DocumentExtractService) { }
 
 
     async uploadDocument(file: Express.Multer.File, dto: UploadDocumentDto): Promise<Object> {
@@ -43,10 +47,10 @@ export class DocumentService {
     }
 
     //get documents by parameters, if none get all
-    async getDocuments(name?: string): Promise<Object> {
+    async getDocuments(dto?: GetDocumentDto): Promise<Object> {
         const where: any = {};
-        if (name) {
-            where.fileName = name;
+        if (dto?.fileName) {
+            where.fileName = dto?.fileName;
         }
         where.deleted_at = null;
 
@@ -58,9 +62,9 @@ export class DocumentService {
     }
 
     //get by uuid
-    async getDocumentByUuid(uuid: string): Promise<Object> {
+    async getDocumentByUuid(dto: GetDocumentDto): Promise<Object> {
         const document = await this.prismaService.document.findUnique({
-            where: { id: uuid, deleted_at: null }
+            where: { id: dto.id, deleted_at: null }
         });
 
         if (!document) {
@@ -75,9 +79,9 @@ export class DocumentService {
     }
 
     //soft delete
-    async deleteDocument(uuid: string): Promise<Object> {
+    async deleteDocument(dto: GetDocumentDto): Promise<Object> {
         const document = await this.prismaService.document.update({
-            where: { id: uuid, deleted_at: null },
+            where: { id: dto.id, deleted_at: null },
             data: { deleted_at: new Date() }
         });
 
@@ -86,7 +90,32 @@ export class DocumentService {
         }
 
         return {
-            success: true
+            success: true,
+            message: "File deleted"
         };
+    }
+
+    async getText(dto: GetDocumentDto): Promise<any> {
+        const documentObj = await this.prismaService.document.findUnique({
+            where: { id: dto.id, deleted_at: null }
+        });
+
+        if (!documentObj) {
+            throw new BadRequestException("Document not found!")
+        }
+
+        const file = await fs.readFile(documentObj.path)
+
+        if (!documentObj) {
+            throw new NotFoundException('Document not found');
+        }
+
+        if (documentObj.mimeType === "application/pdf") {
+            //return await this.documentExtract.extractPDF(file);  //need to create
+        } else if (documentObj.mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
+            return await this.documentExtract.extractDocx(file);
+        } else {
+            throw new BadRequestException("Invalid file type");
+        }
     }
 }
