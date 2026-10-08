@@ -1,4 +1,4 @@
-import { Body, Controller, FileTypeValidator, MaxFileSizeValidator, ParseFilePipe, Query, Post, Get, Param, UploadedFile, UseInterceptors } from "@nestjs/common";
+import { Body, Controller, FileTypeValidator, MaxFileSizeValidator, ParseFilePipe, Query, Post, Get, Param, UploadedFile, UseInterceptors, Delete } from "@nestjs/common";
 import { DocumentService } from "./document.service.js";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { UploadDocumentDto } from "./dto/upload-document.dto.js"
@@ -39,6 +39,10 @@ export class DocumentController {
         return this.documentService.getDocuments(name);
     }
 
+    @Delete(':uuid')
+    async deleteDocument(@Param('uuid') uuid: string): Promise<Object> {
+        return this.documentService.deleteDocument(uuid);
+    }
 
 }
 

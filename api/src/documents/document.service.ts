@@ -15,7 +15,7 @@ export class DocumentService {
 
         const hash = crypto.createHash('sha256').update(file.buffer).digest('hex'); // hash of the file
 
-        const existing = await this.prismaService.document.findFirst({ where: { hash } });
+        const existing = await this.prismaService.document.findFirst({ where: { hash, deleted_at: null } });
         if (existing) {
             throw new ConflictException('Document already exists');
         }
@@ -48,8 +48,10 @@ export class DocumentService {
         if (name) {
             where.fileName = name;
         }
+        where.deleted_at = null;
+
         let documents = await this.prismaService.document.findMany({
-            where: Object.keys(where).length ? where : undefined //if 0 keys means no document so returns all
+            where
         });
 
         return documents;
@@ -58,7 +60,7 @@ export class DocumentService {
     //get by uuid
     async getDocumentByUuid(uuid: string): Promise<Object> {
         const document = await this.prismaService.document.findUnique({
-            where: { id: uuid }
+            where: { id: uuid, deleted_at: null }
         });
 
         if (!document) {
@@ -70,5 +72,21 @@ export class DocumentService {
         Object.assign(document, { fileContent: content }); //Add buffer to response
 
         return document;
+    }
+
+    //soft delete
+    async deleteDocument(uuid: string): Promise<Object> {
+        const document = await this.prismaService.document.update({
+            where: { id: uuid, deleted_at: null },
+            data: { deleted_at: new Date() }
+        });
+
+        if (!document) {
+            throw new NotFoundException('Document not found');
+        }
+
+        return {
+            success: true
+        };
     }
 }
