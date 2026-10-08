@@ -1,562 +1,83 @@
 <!DOCTYPE html>
-<html lang="it">
+<html lang="en">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document Manager</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <title>Document Management</title>
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        :root {
-            --bg-color: #0f172a;
-            --card-bg: rgba(30, 41, 59, 0.7);
-            --card-border: rgba(255, 255, 255, 0.08);
-            --primary: #3b82f6;
-            --primary-hover: #2563eb;
-            --danger: #ef4444;
-            --danger-hover: #dc2626;
-            --text-main: #f8fafc;
-            --text-muted: #94a3b8;
-            --accent-glow: rgba(59, 130, 246, 0.15);
-        }
-
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-            font-family: 'Inter', sans-serif;
-        }
-
         body {
-            background-color: var(--bg-color);
-            background-image:
-                radial-gradient(circle at 15% 15%, rgba(59, 130, 246, 0.12) 0%, transparent 40%),
-                radial-gradient(circle at 85% 85%, rgba(139, 92, 246, 0.1) 0%, transparent 40%);
-            min-height: 100vh;
-            color: var(--text-main);
-            padding: 40px 20px;
-            display: flex;
-            justify-content: center;
+            background-color: #f8f9fa;
         }
-
         .container {
-            width: 100%;
-            max-width: 860px;
-            display: flex;
-            flex-direction: column;
-            gap: 28px;
-        }
-
-        .header {
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-        }
-
-        .header h1 {
-            font-size: 1.8rem;
-            font-weight: 700;
-            letter-spacing: -0.02em;
-        }
-
-        .header p {
-            color: var(--text-muted);
-            font-size: 0.95rem;
-        }
-
-        /* Glassmorphism Card */
-        .card {
-            background: var(--card-bg);
-            backdrop-filter: blur(12px);
-            border: 1px solid var(--card-border);
-            border-radius: 16px;
-            padding: 24px;
-            box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
-        }
-
-        /* Upload Section */
-        .upload-section {
-            display: flex;
-            flex-direction: column;
-            gap: 16px;
-        }
-
-        .upload-form {
-            display: flex;
-            gap: 12px;
-            align-items: center;
-            flex-wrap: wrap;
-        }
-
-        .file-input-wrapper {
-            flex: 1;
-            min-width: 260px;
-            position: relative;
-        }
-
-        input[type="file"] {
-            width: 100%;
-            padding: 10px 14px;
-            background: rgba(15, 23, 42, 0.6);
-            border: 1px solid var(--card-border);
-            border-radius: 10px;
-            color: var(--text-muted);
-            font-size: 0.9rem;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-
-        input[type="file"]:hover {
-            border-color: rgba(255, 255, 255, 0.2);
-        }
-
-        input[type="file"]::file-selector-button {
-            background: rgba(255, 255, 255, 0.08);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            color: var(--text-main);
-            padding: 6px 12px;
-            border-radius: 6px;
-            cursor: pointer;
-            margin-right: 12px;
-            font-size: 0.85rem;
-            transition: background 0.2s;
-        }
-
-        input[type="file"]::file-selector-button:hover {
-            background: rgba(255, 255, 255, 0.15);
-        }
-
-        .btn {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            font-size: 0.9rem;
-            font-weight: 500;
-            padding: 11px 20px;
-            border-radius: 10px;
-            border: none;
-            cursor: pointer;
-            transition: all 0.2s ease;
-        }
-
-        .btn-primary {
-            background: var(--primary);
-            color: white;
-            box-shadow: 0 4px 14px var(--accent-glow);
-        }
-
-        .btn-primary:hover {
-            background: var(--primary-hover);
-            transform: translateY(-1px);
-        }
-
-        .btn-primary:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            transform: none;
-        }
-
-        .btn-sm {
-            padding: 6px 12px;
-            font-size: 0.8rem;
-            border-radius: 8px;
-        }
-
-        .btn-download {
-            background: rgba(59, 130, 246, 0.15);
-            color: #60a5fa;
-            border: 1px solid rgba(59, 130, 246, 0.3);
-        }
-
-        .btn-download:hover {
-            background: rgba(59, 130, 246, 0.25);
-        }
-
-        .btn-delete {
-            background: rgba(239, 68, 68, 0.15);
-            color: #f87171;
-            border: 1px solid rgba(239, 68, 68, 0.3);
-        }
-
-        .btn-delete:hover {
-            background: rgba(239, 68, 68, 0.25);
-        }
-
-        .alert {
-            padding: 12px 16px;
-            border-radius: 10px;
-            font-size: 0.88rem;
-            display: none;
-            animation: fadeIn 0.2s ease;
-        }
-
-        .alert-success {
-            background: rgba(16, 185, 129, 0.15);
-            border: 1px solid rgba(16, 185, 129, 0.3);
-            color: #34d399;
-        }
-
-        .alert-error {
-            background: rgba(239, 68, 68, 0.15);
-            border: 1px solid rgba(239, 68, 68, 0.3);
-            color: #f87171;
-        }
-
-        /* Table & List */
-        .list-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 16px;
-        }
-
-        .list-header h2 {
-            font-size: 1.15rem;
-            font-weight: 600;
-        }
-
-        .doc-table {
-            width: 100%;
-            border-collapse: collapse;
-            text-align: left;
-            font-size: 0.9rem;
-        }
-
-        .doc-table th {
-            padding: 12px 14px;
-            color: var(--text-muted);
-            font-weight: 500;
-            border-bottom: 1px solid var(--card-border);
-            font-size: 0.8rem;
-            text-transform: uppercase;
-            letter-spacing: 0.04em;
-        }
-
-        .doc-table td {
-            padding: 14px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
-            vertical-align: middle;
-        }
-
-        .doc-table tr:hover td {
-            background: rgba(255, 255, 255, 0.02);
-        }
-
-        .file-cell {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            font-weight: 500;
-        }
-
-        .file-icon {
-            width: 34px;
-            height: 34px;
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 0.75rem;
-            font-weight: 700;
-            text-transform: uppercase;
-        }
-
-        .icon-pdf {
-            background: rgba(239, 68, 68, 0.15);
-            color: #f87171;
-            border: 1px solid rgba(239, 68, 68, 0.3);
-        }
-
-        .icon-doc {
-            background: rgba(59, 130, 246, 0.15);
-            color: #60a5fa;
-            border: 1px solid rgba(59, 130, 246, 0.3);
-        }
-
-        .badge {
-            display: inline-block;
-            padding: 3px 8px;
-            border-radius: 6px;
-            font-size: 0.75rem;
-            background: rgba(255, 255, 255, 0.06);
-            color: var(--text-muted);
-        }
-
-        .actions {
-            display: flex;
-            gap: 8px;
-            justify-content: flex-end;
-        }
-
-        .empty-state {
-            text-align: center;
-            padding: 40px 20px;
-            color: var(--text-muted);
-            font-size: 0.95rem;
-        }
-
-        @keyframes fadeIn {
-            from {
-                opacity: 0;
-                transform: translateY(-4px);
-            }
-
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
+            max-width: 900px;
         }
     </style>
 </head>
 
-<body>
+<body class="py-5">
     <div class="container">
-        <header class="header">
-            <h1>Document Management</h1>
-            <p>Upload, manage and download your documents (PDF, DOCX)</p>
+        <!-- Header -->
+        <header class="mb-4">
+            <h1 class="h3 fw-bold">Document Management</h1>
+            <p class="text-muted">Upload, manage, download and extract text from your documents (PDF, DOCX)</p>
         </header>
 
-        <!-- Upload Section -->
-        <section class="card upload-section">
-            <form id="uploadForm" class="upload-form" onsubmit="event.preventDefault(); handleUpload();">
-                <div class="file-input-wrapper">
-                    <input type="file" id="fileInput"
-                        accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                        required>
-                </div>
-                <button type="submit" id="uploadBtn" class="btn btn-primary">
-                    <span>Upload Document</span>
+        <!-- Upload Card -->
+        <div class="card shadow-sm mb-4">
+            <div class="card-body">
+                <form id="uploadForm" class="row g-3 align-items-center" onsubmit="event.preventDefault(); handleUpload();">
+                    <div class="col-sm-9">
+                        <input type="file" class="form-control" id="fileInput"
+                            accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                            required>
+                    </div>
+                    <div class="col-sm-3 d-grid">
+                        <button type="submit" id="uploadBtn" class="btn btn-primary">
+                            Upload Document
+                        </button>
+                    </div>
+                </form>
+                <div id="statusMessage" class="alert mt-3 d-none mb-0" role="alert"></div>
+            </div>
+        </div>
+
+        <!-- Documents Table Card -->
+        <div class="card shadow-sm">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center py-3">
+                <h2 class="h5 mb-0 fw-semibold">Your Documents</h2>
+                <button onclick="loadDocuments()" class="btn btn-sm btn-outline-secondary">
+                    🔄 Refresh
                 </button>
-            </form>
-            <div id="statusMessage" class="alert"></div>
-        </section>
-
-        <!-- Documents Table Section -->
-        <section class="card">
-            <div class="list-header">
-                <h2>Your Documents</h2>
-                <button onclick="loadDocuments()" class="btn btn-sm btn-download" title="Refresh list">🔄
-                    Refresh</button>
             </div>
-
-            <table class="doc-table">
-                <thead>
-                    <tr>
-                        <th>File Name</th>
-                        <th>Type</th>
-                        <th>Date</th>
-                        <th style="text-align: right;">Actions</th>
-                    </tr>
-                </thead>
-                <tbody id="documentsList">
-                    <!-- Populated dynamically -->
-                </tbody>
-            </table>
-            <div id="emptyState" class="empty-state" style="display: none;">
-                No documents found. Upload one to get started!
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>File Name</th>
+                                <th>Type</th>
+                                <th>Date</th>
+                                <th class="text-end">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="documentsList">
+                            <!-- Populated dynamically by app.js -->
+                        </tbody>
+                    </table>
+                </div>
+                <div id="emptyState" class="text-center py-5 text-muted d-none">
+                    No documents found. Upload one to get started!
+                </div>
             </div>
-        </section>
+        </div>
     </div>
 
-    <script>
-        const API_URL = 'http://localhost:3000/api/documents';
-
-        // Display feedback notification
-        function showMessage(text, isError = false) {
-            const el = document.getElementById('statusMessage');
-            el.textContent = text;
-            el.className = `alert ${isError ? 'alert-error' : 'alert-success'}`;
-            el.style.display = 'block';
-            setTimeout(() => {
-                el.style.display = 'none';
-            }, 4000);
-        }
-
-        // Fetch and render documents list
-        async function loadDocuments() {
-            const tbody = document.getElementById('documentsList');
-            const emptyState = document.getElementById('emptyState');
-
-            try {
-                const response = await fetch(API_URL);
-                const docs = await response.json();
-
-                tbody.innerHTML = '';
-
-                if (!Array.isArray(docs) || docs.length === 0) {
-                    emptyState.style.display = 'block';
-                    return;
-                }
-
-                emptyState.style.display = 'none';
-
-                docs.forEach(doc => {
-                    const tr = document.createElement('tr');
-
-                    const isPdf = doc.mimeType.includes('pdf');
-                    const iconClass = isPdf ? 'icon-pdf' : 'icon-doc';
-                    const iconText = isPdf ? 'PDF' : 'DOC';
-                    const dateFormatted = new Date(doc.created_at).toLocaleDateString('en-US', {
-                        day: '2-digit',
-                        month: 'short',
-                        year: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit'
-                    });
-
-                    tr.innerHTML = `
-                        <td>
-                            <div class="file-cell">
-                                <div class="file-icon ${iconClass}">${iconText}</div>
-                                <span>${escapeHtml(doc.fileName)}</span>
-                            </div>
-                        </td>
-                        <td><span class="badge">${isPdf ? 'PDF' : 'Word (DOCX)'}</span></td>
-                        <td style="color: var(--text-muted); font-size: 0.85rem;">${dateFormatted}</td>
-                        <td>
-                            <div class="actions">
-                                <button class="btn btn-sm btn-download" onclick="downloadDocument('${doc.id}', '${escapeHtml(doc.fileName)}')">
-                                    ⬇️ Download
-                                </button>
-                                <button class="btn btn-sm btn-delete" onclick="deleteDocument('${doc.id}')">
-                                    🗑️ Delete
-                                </button>
-                                <button class="btn btn-sm btn-read" onclick="extractText('${doc.id}')">
-                                    📄 Extract Test
-                                </button>
-                            </div>
-                        </td>
-                    `;
-                    tbody.appendChild(tr);
-                });
-            } catch (err) {
-                console.error(err);
-                showMessage('Error loading documents list', true);
-            }
-        }
-
-        // Handle file upload
-        async function handleUpload() {
-            const fileInput = document.getElementById('fileInput');
-            const uploadBtn = document.getElementById('uploadBtn');
-
-            if (!fileInput.files || fileInput.files.length === 0) {
-                showMessage('Please select a file first', true);
-                return;
-            }
-
-            const file = fileInput.files[0];
-            const formData = new FormData();
-            formData.append('file', file);
-            formData.append('ownerId', 1);
-
-            uploadBtn.disabled = true;
-            uploadBtn.innerHTML = '<span>Uploading...</span>';
-
-            try {
-                const response = await fetch(`${API_URL}/upload`, {
-                    method: 'POST',
-                    body: formData,
-                });
-
-                const data = await response.json();
-
-                if (!response.ok) {
-                    throw new Error(data.message || 'Upload failed');
-                }
-
-                showMessage('Document uploaded successfully!');
-                fileInput.value = '';
-                await loadDocuments();
-            } catch (error) {
-                showMessage(error.message, true);
-            } finally {
-                uploadBtn.disabled = false;
-                uploadBtn.innerHTML = '<span>Upload Document</span>';
-            }
-        }
-
-        // Download document: decode Base64 into Blob
-        async function downloadDocument(uuid, defaultFileName) {
-            try {
-                const response = await fetch(`${API_URL}/${uuid}/download`);
-                if (!response.ok) throw new Error('Failed to download document');
-
-                const doc = await response.json();
-
-                // 1. Decode Base64 string to raw binary string
-                const byteCharacters = atob(doc.fileContent);
-                const byteNumbers = new Uint8Array(byteCharacters.length);
-                for (let i = 0; i < byteCharacters.length; i++) {
-                    byteNumbers[i] = byteCharacters.charCodeAt(i);
-                }
-
-                // 2. Create Blob with original MIME type
-                const blob = new Blob([byteNumbers], { type: doc.mimeType });
-                const blobUrl = URL.createObjectURL(blob);
-
-                // 3. Trigger browser download
-                const link = document.createElement('a');
-                link.href = blobUrl;
-                link.download = doc.fileName || defaultFileName;
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-
-                // 4. Revoke temporary object URL
-                URL.revokeObjectURL(blobUrl);
-            } catch (error) {
-                console.error(error);
-                showMessage('Error downloading document', true);
-            }
-        }
-
-        //Extract Text
-        async function extractText(uuid) {
-            try {
-                const res = await fetch(`${API_URL}/${uuid}/content`);
-                if (!res.ok) throw new Error('Failed to extract text');
-                const data = await res.json();
-                showMessage(data.content);
-            } catch (error) {
-                console.error(error);
-                showMessage('Error extracting text', true);
-            }
-        }
-
-        // Soft delete document
-        async function deleteDocument(uuid) {
-            if (!confirm('Are you sure you want to delete this document?')) return;
-
-            try {
-                const response = await fetch(`${API_URL}/${uuid}`, {
-                    method: 'DELETE',
-                });
-
-                if (!response.ok) {
-                    const err = await response.json();
-                    throw new Error(err.message || 'Error deleting document');
-                }
-
-                showMessage('Document deleted successfully');
-                await loadDocuments();
-            } catch (error) {
-                showMessage(error.message, true);
-            }
-        }
-
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        }
-
-        // Initial fetch on page load
-        window.addEventListener('DOMContentLoaded', loadDocuments);
-    </script>
+    <!-- Bootstrap 5 JS & Application Script -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="app.js"></script>
 </body>
 
 </html>
