@@ -11,7 +11,9 @@
     <input type="file" id="file" name="file">
     <button onclick="uploadDocument()">Upload Document</button>
     <p id="result"></p>
-
+    <br>
+    <select name="uuids" id="uuids"></select>
+    <button id="download">Download Document</button>
     <script>
         function uploadDocument() {
             const file = document.getElementById('file').files[0];
@@ -24,8 +26,68 @@
             })
                 .then(response => response.json())
                 .then(data => document.getElementById('result').textContent = JSON.stringify(data))
-            //.catch(error => console.error('Error:', error));
+                .catch(error => console.error('Error:', error));
         }
+
+
+        async function downloadDocument(uuid) {
+            const response = await fetch(`http://localhost:3000/api/documents/${uuid}/download`);
+            const doc = await response.json();
+            // doc contains: { fileName, mimeType, fileContent, ... }
+
+            // 1. Decode the Base64 string into binary characters
+            const byteCharacters = atob(doc.fileContent);
+            const byteNumbers = new Uint8Array(byteCharacters.length);
+            for (let i = 0; i < byteCharacters.length; i++) {
+                byteNumbers[i] = byteCharacters.charCodeAt(i);
+            }
+
+            // 2. Create a blob object with the original MIME type (es. 'application/pdf')
+            const blob = new Blob([byteNumbers], { type: doc.mimeType });
+
+            // 3. Create a temporary local URL (blob:http://...)
+            const blobUrl = URL.createObjectURL(blob);
+
+            // 4. Simulate the download in the browser
+            const link = document.createElement('a');
+            link.href = blobUrl;
+            link.download = doc.fileName; // Original filename to save
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+
+            // 5. Cleanup memory
+            URL.revokeObjectURL(blobUrl);
+        }
+
+
+        window.addEventListener('DOMContentLoaded', (event) => {
+            async function getUuids() {
+                const response = await fetch('http://localhost:3000/api/documents');
+                const documents = await response.json();
+                const select = document.getElementById('uuids');
+                select.innerHTML = '';
+                documents.forEach(doc => {
+                    //add uuid and filename as option
+                    const option = document.createElement('option');
+                    option.value = doc.id;
+                    option.textContent = doc.fileName;
+                    select.appendChild(option);
+                });
+            }
+            getUuids();
+
+            const download = document.getElementById('download');
+            download.addEventListener('click', () => {
+                //take selected value on button click
+                const uuid = document.getElementById('uuids').value;
+                downloadDocument(uuid);
+            });
+
+        });
+
+
+
     </script>
 </body>
 
