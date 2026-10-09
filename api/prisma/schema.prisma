@@ -15,6 +15,70 @@ datasource db {
 enum MessageRole {
   USER
   AI
+  ASSISTANT
+}
+
+enum CaseFamily {
+  CARGO_DAMAGE
+  CARGO_CONTAMINATION
+  SHORTAGE
+  TEMPERATURE_EXCURSION
+  OTHER
+}
+
+enum CaseStatus {
+  INTAKE
+  IN_REVIEW
+  DRAFT
+  APPROVED
+}
+
+enum EvidenceStatus {
+  OBSERVED
+  REPORTED
+  STATED_IN_DOCUMENT
+  CALCULATED
+  DISPUTED
+  UNKNOWN
+}
+
+enum DocumentAvailability {
+  ORIGINAL_ACCESSIBLE
+  EXCERPT_ONLY
+  REFERENCED_NOT_ACCESSIBLE
+  NOT_PROVIDED
+}
+
+enum ExtractionStatus {
+  PENDING
+  EXTRACTED
+  NEEDS_REVIEW
+}
+
+enum EventDateType {
+  EVENT
+  DOCUMENT
+  RECEIVED
+  UNKNOWN
+}
+
+enum ChecklistStatus {
+  COMPLIANT
+  ISSUE_FOUND
+  NOT_VERIFIABLE
+  NOT_APPLICABLE
+}
+
+enum CaseArtifactType {
+  STRUCTURED_CASE
+  DOCUMENT_REGISTER
+  PRELIMINARY_REVIEW
+  SURVEY_REPORT_DRAFT
+}
+
+enum ArtifactStatus {
+  DRAFT
+  APPROVED
 }
 
 model User {
@@ -23,6 +87,8 @@ model User {
   passwordHash  String         @map("password_hash")
   chats         Chat[]
   documents     Document[]
+  cases         Case[]
+  caseArtifacts CaseArtifact[]
   refreshTokens RefreshToken[]
   created_at    DateTime       @default(now())
   updated_at    DateTime       @updatedAt
@@ -53,13 +119,16 @@ model Chat {
   title      String?
   userId     Int
   user       User           @relation(fields: [userId], references: [id], onDelete: Restrict)
+  caseId     String?        @db.Uuid
+  case       Case?          @relation(fields: [caseId], references: [id], onDelete: SetNull)
   messages   Message[]
   documents  ChatDocument[]
   created_at DateTime       @default(now())
   updated_at DateTime       @updatedAt
   deleted_at DateTime?
 
-  @@index([userId])
+  @@index([userId, updated_at])
+  @@index([caseId])
 }
 
 model Message {
@@ -84,11 +153,15 @@ model Document {
   mimeType       String
   path           String
   hash           String
+  extractedText  String?         @db.Text @map("extracted_text")
+  extractionStatus ExtractionStatus @default(PENDING) @map("extraction_status")
+  sourceMetadata Json?           @db.JsonB @map("source_metadata")
   created_at     DateTime        @default(now())
   updated_at     DateTime        @updatedAt
   deleted_at     DateTime?
   chatLinks      ChatDocument[]
   messageSources MessageSource[]
+  caseLinks      CaseDocument[]
 }
 
 model ChatDocument {
@@ -113,4 +186,147 @@ model MessageSource {
 
   @@index([messageId])
   @@index([documentId])
+}
+
+model Case {
+  id                   String          @id @default(uuid(7)) @db.Uuid
+  ownerId              Int             @map("owner_id")
+  owner                User            @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  title                String          @db.VarChar(200)
+  internalReference    String?         @map("internal_reference") @db.VarChar(120)
+  publicReference      String?         @map("public_reference") @db.VarChar(160)
+  caseFamily           CaseFamily      @default(CARGO_DAMAGE) @map("case_family")
+  status               CaseStatus      @default(INTAKE)
+  assignment           Json?           @db.JsonB
+  shipment             Json?           @db.JsonB
+  parties              Json?           @db.JsonB
+  damageAssessment     Json?           @map("damage_assessment") @db.JsonB
+  openQuestions        String[]        @default([]) @map("open_questions")
+  reportTemplateId     String          @default("cargo_damage_general_it_v1") @map("report_template_id")
+  clicheSetVersion     String?         @map("cliche_set_version")
+  nextDocumentNumber   Int             @default(1) @map("next_document_number")
+  documents            CaseDocument[]
+  events               CaseEvent[]
+  evidence             CaseEvidence[]
+  issues               CaseIssue[]
+  chats                Chat[]
+  artifacts            CaseArtifact[]
+  createdAt            DateTime        @default(now()) @map("created_at")
+  updatedAt            DateTime        @updatedAt @map("updated_at")
+  deletedAt            DateTime?       @map("deleted_at")
+
+  @@index([ownerId, status, updatedAt])
+  @@map("cases")
+}
+
+model CaseDocument {
+  id              String              @id @default(uuid(7)) @db.Uuid
+  caseId          String              @map("case_id") @db.Uuid
+  case            Case                @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  documentId      String              @map("document_id") @db.Uuid
+  document        Document            @relation(fields: [documentId], references: [id], onDelete: Restrict)
+  sourceCode      String              @map("source_code") @db.VarChar(40)
+  documentType    String?             @map("document_type") @db.VarChar(80)
+  documentDate    DateTime?           @map("document_date")
+  senderOrAuthor  String?             @map("sender_or_author") @db.VarChar(240)
+  availability    DocumentAvailability @default(ORIGINAL_ACCESSIBLE)
+  metadata        Json?               @db.JsonB
+  attachedAt      DateTime            @default(now()) @map("attached_at")
+  events          CaseEvent[]
+  evidence        CaseEvidence[]
+
+  @@unique([caseId, documentId])
+  @@unique([caseId, sourceCode])
+  @@index([documentId])
+  @@map("case_documents")
+}
+
+model CaseEvent {
+  id                String          @id @default(uuid(7)) @db.Uuid
+  caseId            String          @map("case_id") @db.Uuid
+  case              Case            @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  event             String          @db.Text
+  date              DateTime?
+  dateType          EventDateType   @default(UNKNOWN) @map("date_type")
+  epistemicStatus   EvidenceStatus  @map("epistemic_status")
+  caseDocumentId    String?         @map("case_document_id") @db.Uuid
+  source            CaseDocument?   @relation(fields: [caseDocumentId], references: [id], onDelete: Restrict)
+  pageNumber        Int?            @map("page_number")
+  excerpt           String?         @db.Text
+  createdAt         DateTime        @default(now()) @map("created_at")
+  updatedAt         DateTime        @updatedAt @map("updated_at")
+
+  @@index([caseId, date])
+  @@map("case_events")
+}
+
+model CaseEvidence {
+  id                String          @id @default(uuid(7)) @db.Uuid
+  caseId            String          @map("case_id") @db.Uuid
+  case              Case            @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  fieldKey          String          @map("field_key") @db.VarChar(160)
+  value             Json            @db.JsonB
+  unit              String?         @db.VarChar(40)
+  comparisonGroup   String?         @map("comparison_group") @db.VarChar(160)
+  epistemicStatus   EvidenceStatus  @map("epistemic_status")
+  attribution       String?         @db.VarChar(240)
+  caseDocumentId    String?         @map("case_document_id") @db.Uuid
+  source            CaseDocument?   @relation(fields: [caseDocumentId], references: [id], onDelete: Restrict)
+  pageNumber        Int?            @map("page_number")
+  excerpt           String?         @db.Text
+  createdAt         DateTime        @default(now()) @map("created_at")
+  updatedAt         DateTime        @updatedAt @map("updated_at")
+  issueLinks        CaseIssueEvidence[]
+
+  @@index([caseId, fieldKey, comparisonGroup])
+  @@map("case_evidence")
+}
+
+model CaseIssue {
+  id              String              @id @default(uuid(7)) @db.Uuid
+  caseId          String              @map("case_id") @db.Uuid
+  case            Case                @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  ruleId          String?             @map("rule_id") @db.VarChar(120)
+  ruleVersion     String?             @map("rule_version") @db.VarChar(80)
+  status          ChecklistStatus
+  severity        String?             @db.VarChar(40)
+  title           String              @db.VarChar(240)
+  explanation     String              @db.Text
+  suggestedCheck String?             @map("suggested_check") @db.Text
+  evidence        CaseIssueEvidence[]
+  createdAt       DateTime            @default(now()) @map("created_at")
+  updatedAt       DateTime            @updatedAt @map("updated_at")
+
+  @@index([caseId, status])
+  @@map("case_issues")
+}
+
+model CaseIssueEvidence {
+  issueId    String      @map("issue_id") @db.Uuid
+  issue      CaseIssue   @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  evidenceId String      @map("evidence_id") @db.Uuid
+  evidence   CaseEvidence @relation(fields: [evidenceId], references: [id], onDelete: Cascade)
+
+  @@id([issueId, evidenceId])
+  @@map("case_issue_evidence")
+}
+
+model CaseArtifact {
+  id             String           @id @default(uuid(7)) @db.Uuid
+  caseId         String           @map("case_id") @db.Uuid
+  case           Case             @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  createdById    Int              @map("created_by_id")
+  createdBy      User             @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  type           CaseArtifactType
+  version        Int
+  status         ArtifactStatus   @default(DRAFT)
+  content        Json             @db.JsonB
+  model          String?          @db.VarChar(120)
+  promptVersion  String?          @map("prompt_version") @db.VarChar(80)
+  createdAt      DateTime         @default(now()) @map("created_at")
+  approvedAt     DateTime?        @map("approved_at")
+
+  @@unique([caseId, type, version])
+  @@index([caseId, type, version])
+  @@map("case_artifacts")
 }
