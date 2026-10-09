@@ -8,7 +8,10 @@ export type ParsedEmail = {
   metadata: Record<string, unknown>;
 };
 
-export function parseEmail(raw: string): ParsedEmail {
+export function parseEmail(source: string | Buffer): ParsedEmail {
+  // Preserve original octets until each MIME part declares its own charset.
+  const binarySource = Buffer.isBuffer(source);
+  const raw = binarySource ? source.toString('latin1') : source;
   if (!raw || raw.length > MAX_EMAIL_CHARACTERS || raw.includes('\u0000')) {
     throw new BadRequestException('Email file is invalid');
   }
@@ -25,12 +28,14 @@ export function parseEmail(raw: string): ParsedEmail {
   }
 
   const body = normalized.slice(separator + 2);
-  const text = extractTextBody(headers, body);
+  const text = extractTextBody(headers, body, 0, binarySource);
   const metadata = emailMetadata(headers, raw);
   return { headers, text, metadata };
 }
 
-export function parseEmailMetadata(raw: string): Record<string, unknown> {
+export function parseEmailMetadata(
+  raw: string | Buffer,
+): Record<string, unknown> {
   return parseEmail(raw).metadata;
 }
 
@@ -44,7 +49,10 @@ function parseHeaders(source: string): Record<string, string> {
     }
   }
 
-  const result: Record<string, string> = {};
+  const result: Record<string, string> = Object.create(null) as Record<
+    string,
+    string
+  >;
   for (const line of unfolded) {
     const separator = line.indexOf(':');
     if (separator <= 0) {
@@ -85,7 +93,13 @@ function emailMetadata(
 function extractTextBody(
   headers: Record<string, string>,
   body: string,
+  depth = 0,
+  binarySource = false,
 ): string {
+  if (depth > 10)
+    throw new BadRequestException(
+      'Email MIME nesting exceeds supported limits',
+    );
   const contentType = headers['content-type'] ?? 'text/plain';
   const boundary = /boundary\s*=\s*(?:"([^"]+)"|([^;\s]+))/i.exec(contentType);
   if (!boundary) {
@@ -93,6 +107,7 @@ function extractTextBody(
       body,
       headers['content-transfer-encoding'] ?? '',
       contentType,
+      binarySource,
     );
   }
 
@@ -100,6 +115,8 @@ function extractTextBody(
   const plainTextParts: string[] = [];
   const htmlTextParts: string[] = [];
   const sections = body.split(boundaryMarker);
+  if (sections.length > 1000)
+    throw new BadRequestException('Email contains too many MIME parts');
   for (const section of sections) {
     if (!section.trim() || section.trim() === '--') {
       continue;
@@ -116,6 +133,16 @@ function extractTextBody(
     ) {
       continue;
     }
+    if (partType.toLowerCase().startsWith('multipart/')) {
+      const nested = extractTextBody(
+        partHeaders,
+        normalized.slice(separator + 2),
+        depth + 1,
+        binarySource,
+      );
+      if (nested.trim()) plainTextParts.push(nested.trim());
+      continue;
+    }
     const isPlain = partType.toLowerCase().startsWith('text/plain');
     const isHtml = partType.toLowerCase().startsWith('text/html');
     if (!isPlain && !isHtml) {
@@ -125,6 +152,7 @@ function extractTextBody(
       normalized.slice(separator + 2),
       partHeaders['content-transfer-encoding'] ?? '',
       partType,
+      binarySource,
     );
     if (decoded.trim()) {
       (isPlain ? plainTextParts : htmlTextParts).push(decoded.trim());
@@ -137,12 +165,17 @@ function decodeBody(
   body: string,
   transferEncoding: string,
   contentType: string,
+  binarySource: boolean,
 ): string {
   let decoded = body;
   const encoding = transferEncoding.toLowerCase();
   if (encoding === 'base64') {
     try {
-      decoded = Buffer.from(body.replace(/\s/g, ''), 'base64').toString(
+      const encoded = body.replace(/\s/g, '');
+      if (!/^[A-Za-z0-9+/]*={0,2}$/.test(encoded) || encoded.length % 4 === 1)
+        throw new Error('Invalid base64');
+      decoded = decodeBytes(
+        Buffer.from(encoded, 'base64'),
         charsetFor(contentType),
       );
     } catch {
@@ -154,7 +187,12 @@ function decodeBody(
       .replace(/=([0-9a-f]{2})/gi, (_match, hex: string) =>
         String.fromCharCode(Number.parseInt(hex, 16)),
       );
-    decoded = Buffer.from(binary, 'binary').toString(charsetFor(contentType));
+    decoded = decodeBytes(
+      Buffer.from(binary, 'latin1'),
+      charsetFor(contentType),
+    );
+  } else if (binarySource) {
+    decoded = decodeBytes(Buffer.from(body, 'latin1'), charsetFor(contentType));
   }
 
   if (contentType.toLowerCase().startsWith('text/html')) {
@@ -177,37 +215,39 @@ function decodeBody(
     .trim();
 }
 
-function charsetFor(contentType: string): BufferEncoding {
+function charsetFor(contentType: string): string {
   const charset = /charset\s*=\s*["']?([^;"'\s]+)/i
     .exec(contentType)?.[1]
     ?.toLowerCase();
-  if (
-    charset === 'iso-8859-1' ||
-    charset === 'latin1' ||
-    charset === 'windows-1252'
-  ) {
-    return 'latin1';
+  return charset ?? 'utf-8';
+}
+
+function decodeBytes(bytes: Buffer, charset: string): string {
+  try {
+    return new TextDecoder(charset, { fatal: true }).decode(bytes);
+  } catch {
+    throw new BadRequestException('Email charset or body encoding is invalid');
   }
-  return 'utf8';
 }
 
 function decodeEncodedWords(value: string): string {
   return value.replace(
     /=\?([^?]+)\?([bq])\?([^?]*)\?=/gi,
     (_match, charset: string, mode: string, data: string) => {
-      const encoding: BufferEncoding =
-        /^(iso-8859-1|latin1|windows-1252)$/i.test(charset) ? 'latin1' : 'utf8';
       if (mode.toLowerCase() === 'b') {
-        return Buffer.from(data, 'base64').toString(encoding);
+        return decodeBytes(Buffer.from(data, 'base64'), charset);
       }
-      return Buffer.from(
-        data
-          .replace(/_/g, ' ')
-          .replace(/=([0-9a-f]{2})/gi, (_part, hex: string) =>
-            String.fromCharCode(Number.parseInt(hex, 16)),
-          ),
-        'binary',
-      ).toString(encoding);
+      return decodeBytes(
+        Buffer.from(
+          data
+            .replace(/_/g, ' ')
+            .replace(/=([0-9a-f]{2})/gi, (_part, hex: string) =>
+              String.fromCharCode(Number.parseInt(hex, 16)),
+            ),
+          'binary',
+        ),
+        charset,
+      );
     },
   );
 }

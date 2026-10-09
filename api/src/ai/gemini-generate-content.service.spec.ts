@@ -13,12 +13,182 @@ afterEach(() => {
 });
 
 describe('GeminiGenerateContentService', () => {
+  const request = {
+    instructions: 'Use only the supplied cargo evidence.',
+    input: 'The consignee reports five wet cartons.',
+    schema: {
+      type: 'object',
+      properties: { answer: { type: 'string' } },
+      required: ['answer'],
+      additionalProperties: false,
+    },
+  };
+
+  it.each([400, 403, 404, 500, 503])(
+    'does not continue the cascade after HTTP %s',
+    async (status) => {
+      process.env.GEMINI_API_KEY = 'test-key';
+      const fetchMock = vi
+        .fn<typeof fetch>()
+        .mockResolvedValue(
+          new Response('Provider details must remain private', { status }),
+        );
+      vi.stubGlobal('fetch', fetchMock);
+      await expect(
+        new GeminiGenerateContentService().createStructuredResponse(request),
+      ).rejects.toMatchObject({ status: 503 });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it.each([
+    null,
+    [],
+    {},
+    { candidates: [] },
+    {
+      candidates: [
+        {
+          finishReason: 'MAX_TOKENS',
+          content: { parts: [{ text: '{"answer":"partial"}' }] },
+        },
+      ],
+    },
+    {
+      candidates: [
+        {
+          finishReason: 'SAFETY',
+          content: { parts: [{ text: '{"answer":"blocked"}' }] },
+        },
+      ],
+    },
+    {
+      candidates: [
+        { finishReason: 'STOP', content: { parts: [{ text: 'not json' }] } },
+      ],
+    },
+    {
+      candidates: [
+        {
+          finishReason: 'STOP',
+          content: { parts: [{ text: '{"answer":5}' }] },
+        },
+      ],
+    },
+    {
+      candidates: [
+        {
+          finishReason: 'STOP',
+          content: { parts: [{ text: '{"answer":"ok","invented":true}' }] },
+        },
+      ],
+    },
+    {
+      candidates: [
+        {
+          finishReason: 'STOP',
+          content: {
+            parts: [{ text: '{"answer":"private reasoning"}', thought: true }],
+          },
+        },
+      ],
+    },
+  ])(
+    'rejects incomplete, blocked or schema-invalid provider payload %#',
+    async (payload) => {
+      process.env.GEMINI_API_KEY = 'test-key';
+      const fetchMock = vi
+        .fn<typeof fetch>()
+        .mockResolvedValue(new Response(JSON.stringify(payload)));
+      vi.stubGlobal('fetch', fetchMock);
+      await expect(
+        new GeminiGenerateContentService().createStructuredResponse(request),
+      ).rejects.toMatchObject({ status: 503 });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('joins output fragments and ignores thought parts', async () => {
+    process.env.GEMINI_API_KEY = 'test-key';
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            candidates: [
+              {
+                finishReason: 'STOP',
+                content: {
+                  parts: [
+                    { text: 'private reasoning', thought: true },
+                    { text: '{"answer":' },
+                    { text: '"supported"}' },
+                  ],
+                },
+              },
+            ],
+          }),
+        ),
+      ),
+    );
+    expect(
+      await new GeminiGenerateContentService().createStructuredResponse(
+        request,
+      ),
+    ).toMatchObject({ value: { answer: 'supported' } });
+  });
+
+  it.each(['invalid json', 'x'.repeat(2_000_001)])(
+    'bounds and validates the provider response body %#',
+    async (body) => {
+      process.env.GEMINI_API_KEY = 'test-key';
+      vi.stubGlobal(
+        'fetch',
+        vi.fn<typeof fetch>().mockResolvedValue(new Response(body)),
+      );
+      await expect(
+        new GeminiGenerateContentService().createStructuredResponse(request),
+      ).rejects.toMatchObject({ status: 503 });
+    },
+  );
+
+  it('refuses oversized UTF-8 input before making a provider request', async () => {
+    process.env.GEMINI_API_KEY = 'test-key';
+    const fetchMock = vi.fn<typeof fetch>();
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(
+      new GeminiGenerateContentService().createStructuredResponse({
+        ...request,
+        input: 'é'.repeat(256_001),
+      }),
+    ).rejects.toMatchObject({ status: 400 });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    new TypeError('network failed'),
+    new DOMException('deadline exceeded', 'TimeoutError'),
+  ])('stops on transport failures and timeouts %#', async (error) => {
+    process.env.GEMINI_API_KEY = 'test-key';
+    const fetchMock = vi.fn<typeof fetch>().mockRejectedValue(error);
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(
+      new GeminiGenerateContentService().createStructuredResponse(request),
+    ).rejects.toMatchObject({ status: 503 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it('uses Gemini structured JSON output without exposing the key in the URL', async () => {
     process.env.GEMINI_API_KEY = 'test-key';
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(
         JSON.stringify({
-          candidates: [{ content: { parts: [{ text: '{"answer":"ok"}' }] } }],
+          candidates: [
+            {
+              finishReason: 'STOP',
+              content: { parts: [{ text: '{"answer":"ok"}' }] },
+            },
+          ],
         }),
         { status: 200 },
       ),
@@ -91,7 +261,10 @@ describe('GeminiGenerateContentService', () => {
         new Response(
           JSON.stringify({
             candidates: [
-              { content: { parts: [{ text: '{"answer":"fallback"}' }] } },
+              {
+                finishReason: 'STOP',
+                content: { parts: [{ text: '{"answer":"fallback"}' }] },
+              },
             ],
           }),
           { status: 200 },

@@ -1,3 +1,5 @@
+import { validateOfficeArchive } from './office-archive.js';
+import { bumpCaseRevision } from '../cases/case-revision.js';
 import {
   BadRequestException,
   ConflictException,
@@ -5,13 +7,15 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { createHash } from 'node:crypto';
-import { Prisma } from '../generated/prisma/client.js';
+import { Prisma, type ExtractionStatus } from '../generated/prisma/client.js';
 import { PDFParse } from 'pdf-parse';
 import { createWorker } from 'tesseract.js';
-import mammoth from 'mammoth';
+import { Worker } from 'node:worker_threads';
 import * as fs from 'node:fs/promises';
+import * as path from 'node:path';
 import { Readable } from 'node:stream';
 import ExcelJS from 'exceljs';
+import sharp from 'sharp';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { parseEmail } from './eml-parser.js';
 import {
@@ -30,13 +34,26 @@ const XLSX_MIME =
 const CSV_MIME = 'text/csv';
 
 type ExtractedPage = { pageNumber: number; text: string };
-type ExtractionResult = { content: string; pages?: ExtractedPage[] };
+type ExtractionResult = {
+  content: string;
+  pages?: ExtractedPage[];
+  requiresReview?: boolean;
+};
+type ExtractedDocumentText = {
+  documentId: string;
+  content: string;
+  pages: Prisma.JsonValue | ExtractedPage[] | null;
+  extractionStatus: ExtractionStatus;
+  extractionTruncated: boolean;
+  extractionReviewedAt: Date | null;
+  sourceMetadata: Prisma.JsonValue | null;
+};
 
 @Injectable()
 export class DocumentExtractService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async getText(id: string, ownerId: number) {
+  async getText(id: string, ownerId: number): Promise<ExtractedDocumentText> {
     const document = await this.prisma.document.findFirst({
       where: { id, ownerId, deleted_at: null },
     });
@@ -76,21 +93,28 @@ export class DocumentExtractService {
       extracted.content.length > MAX_EXTRACTED_CHARACTERS ||
       (clippedPages?.truncated ?? false);
     const extractionStatus =
-      truncated || content.trim().length < 10 ? 'NEEDS_REVIEW' : 'EXTRACTED';
+      truncated || extracted.requiresReview || content.trim().length < 10
+        ? 'NEEDS_REVIEW'
+        : 'EXTRACTED';
 
-    const saved = await this.prisma.document.updateMany({
-      where: { id, ownerId, deleted_at: null },
-      data: {
-        extractedText: content,
-        extractedPages: clippedPages
-          ? (clippedPages.pages as unknown as Prisma.InputJsonArray)
-          : Prisma.DbNull,
-        extractionStatus,
-        extractionTruncated: truncated,
-      },
+    const saved = await this.prisma.$transaction(async (transaction) => {
+      const updated = await transaction.document.updateMany({
+        where: { id, ownerId, deleted_at: null, extractedText: null },
+        data: {
+          extractedText: content,
+          extractedPages: clippedPages
+            ? (clippedPages.pages as unknown as Prisma.InputJsonArray)
+            : Prisma.DbNull,
+          extractionStatus,
+          extractionTruncated: truncated,
+        },
+      });
+      if (updated.count) await invalidateLinkedCases(transaction, id);
+      return updated;
     });
     if (!saved.count) {
-      throw new NotFoundException('Document not found');
+      // A parallel extraction may have populated the cache while this one ran.
+      return this.getText(id, ownerId);
     }
 
     return {
@@ -129,13 +153,23 @@ export class DocumentExtractService {
     }
 
     const reviewedAt = new Date();
-    const updated = await this.prisma.document.updateMany({
-      where: { id, ownerId, deleted_at: null, extractedText: { not: null } },
-      data: {
-        extractionStatus: 'EXTRACTED',
-        extractionReviewedById: ownerId,
-        extractionReviewedAt: reviewedAt,
-      },
+    const updated = await this.prisma.$transaction(async (transaction) => {
+      const result = await transaction.document.updateMany({
+        where: {
+          id,
+          ownerId,
+          deleted_at: null,
+          extractedText: document.extractedText,
+          extractionTruncated: false,
+        },
+        data: {
+          extractionStatus: 'EXTRACTED',
+          extractionReviewedById: ownerId,
+          extractionReviewedAt: reviewedAt,
+        },
+      });
+      if (result.count) await invalidateLinkedCases(transaction, id);
+      return result;
     });
     if (!updated.count) {
       throw new NotFoundException('Document not found');
@@ -236,9 +270,12 @@ export class DocumentExtractService {
       case 'image/png':
       case 'image/jpeg':
       case 'image/tiff':
-        return { content: await this.extractImageWithOcr(file) };
+        return {
+          content: await this.extractImageWithOcr(file),
+          requiresReview: true,
+        };
       case 'message/rfc822':
-        return { content: parseEmail(file.toString('utf8')).text };
+        return { content: parseEmail(file).text };
       default:
         throw new BadRequestException('Document format is not supported');
     }
@@ -248,10 +285,30 @@ export class DocumentExtractService {
     validateFile(file);
     const parser = new PDFParse({ data: Uint8Array.from(file) });
     try {
-      const info = await parser.getInfo({ parsePageInfo: true });
+      let info;
+      try {
+        info = await parser.getInfo({ parsePageInfo: true });
+      } catch {
+        throw new BadRequestException('PDF is not valid or cannot be read');
+      }
       if (info.total === 0 || info.total > MAX_PDF_PAGES) {
         throw new BadRequestException(
           `PDF must contain between 1 and ${MAX_PDF_PAGES} pages`,
+        );
+      }
+      // Reject oversized canvases before rasterization, including sparse scanned pages.
+      if (
+        info.pages.some(
+          (page) =>
+            !Number.isFinite(page.width) ||
+            !Number.isFinite(page.height) ||
+            page.width <= 0 ||
+            page.height <= 0 ||
+            page.width * page.height * 4 > 40_000_000,
+        )
+      ) {
+        throw new BadRequestException(
+          'PDF page dimensions exceed the supported rendering limit',
         );
       }
 
@@ -262,8 +319,9 @@ export class DocumentExtractService {
         throw new BadRequestException('PDF is not valid or cannot be read');
       }
 
-      if (result.text.trim().length < 50) {
-        return this.extractPdfWithOcr(parser, info.total);
+      if (result.pages.some((page) => page.text.trim().length < 10)) {
+        // Await inside try so finally cannot destroy the parser while OCR is running.
+        return await this.extractPdfWithOcr(parser, info.total);
       }
       const pages = result.pages.map((page) => ({
         pageNumber: page.num,
@@ -278,11 +336,44 @@ export class DocumentExtractService {
   private async extractDocx(file: Buffer): Promise<{ content: string }> {
     validateFile(file);
     validateOfficeArchive(file, ['word/document.xml']);
+    const worker = new Worker(
+      new URL('./office-text.worker.mjs', import.meta.url),
+      {
+        workerData: file,
+        resourceLimits: { maxOldGenerationSizeMb: 128, stackSizeMb: 2 },
+      },
+    );
     try {
-      const result = await mammoth.extractRawText({ buffer: file });
-      return { content: result.value };
+      return await new Promise<ExtractionResult>((resolve, reject) => {
+        const fail = () =>
+          reject(
+            new BadRequestException(
+              'DOCX is invalid or exceeds supported parsing limits',
+            ),
+          );
+        const timeout = setTimeout(fail, 15_000);
+        timeout.unref();
+        worker.once('message', (value: unknown) => {
+          clearTimeout(timeout);
+          if (isRecord(value) && typeof value.content === 'string')
+            resolve({ content: value.content });
+          else fail();
+        });
+        worker.once('error', () => {
+          clearTimeout(timeout);
+          fail();
+        });
+        worker.once('exit', () => {
+          clearTimeout(timeout);
+          fail();
+        });
+      });
     } catch {
-      throw new BadRequestException('DOCX is not valid or cannot be read');
+      throw new BadRequestException(
+        'DOCX is invalid or exceeds supported parsing limits',
+      );
+    } finally {
+      await worker.terminate();
     }
   }
 
@@ -300,7 +391,7 @@ export class DocumentExtractService {
     parser: PDFParse,
     pageCount: number,
   ): Promise<ExtractionResult> {
-    const worker = await createWorker(['ita', 'eng']);
+    const worker = await this.createOcrWorker();
     try {
       const pages: ExtractedPage[] = [];
       for (let pageNumber = 1; pageNumber <= pageCount; pageNumber += 1) {
@@ -312,21 +403,23 @@ export class DocumentExtractService {
         });
         const image = rendered.pages[0]?.data;
         if (!image) {
-          continue;
+          throw new BadRequestException(
+            'PDF page could not be rendered for OCR',
+          );
         }
         const result = await worker.recognize(
           Buffer.isBuffer(image) ? image : Buffer.from(image),
         );
         const text = result.data.text.trim();
-        if (text) {
-          pages.push({ pageNumber, text });
-        }
+        // Empty pages remain in the page ledger; they are never silently omitted.
+        pages.push({ pageNumber, text });
       }
       return {
         content: pages
           .map((page) => `[Page ${page.pageNumber}]\n${page.text}`)
           .join('\n\n'),
         pages,
+        requiresReview: true,
       };
     } finally {
       await worker.terminate();
@@ -335,14 +428,39 @@ export class DocumentExtractService {
 
   private async extractImageWithOcr(file: Buffer): Promise<string> {
     validateFile(file);
-    const worker = await createWorker(['ita', 'eng']);
+    const worker = await this.createOcrWorker();
     try {
-      const result = await worker.recognize(file);
+      const normalized = await sharp(file, { limitInputPixels: 40_000_000 })
+        .png()
+        .toBuffer();
+      const result = await worker.recognize(normalized);
       return result.data.text.trim();
     } finally {
       await worker.terminate();
     }
   }
+
+  private async createOcrWorker() {
+    const cachePath = path.resolve(
+      process.env.OCR_CACHE_DIR?.trim() ||
+        path.join(process.cwd(), '.cache', 'ocr'),
+    );
+    await fs.mkdir(cachePath, { recursive: true, mode: 0o700 });
+    return createWorker(['ita', 'eng'], 1, { cachePath });
+  }
+}
+
+async function invalidateLinkedCases(
+  transaction: Prisma.TransactionClient,
+  documentId: string,
+): Promise<void> {
+  const links = await transaction.caseDocument.findMany({
+    where: { documentId },
+    select: { caseId: true },
+    orderBy: { caseId: 'asc' },
+  });
+  for (const caseId of new Set(links.map((link) => link.caseId)))
+    await bumpCaseRevision(transaction, caseId);
 }
 
 async function readSpreadsheetWorkbook(
@@ -396,85 +514,6 @@ function assertDocumentIntegrity(file: Buffer, expectedHash: string): void {
   const actualHash = createHash('sha256').update(file).digest('hex');
   if (actualHash !== expectedHash) {
     throw new ConflictException('Stored document integrity check failed');
-  }
-}
-
-function validateOfficeArchive(file: Buffer, requiredFiles: string[]): void {
-  const minimumOffset = Math.max(0, file.length - 65_557);
-  let eocdOffset = -1;
-  for (let offset = file.length - 22; offset >= minimumOffset; offset -= 1) {
-    if (file.readUInt32LE(offset) === 0x06054b50) {
-      eocdOffset = offset;
-      break;
-    }
-  }
-  if (eocdOffset < 0) {
-    throw new BadRequestException('Office document archive is invalid');
-  }
-
-  const entryCount = file.readUInt16LE(eocdOffset + 10);
-  const directorySize = file.readUInt32LE(eocdOffset + 12);
-  let offset = file.readUInt32LE(eocdOffset + 16);
-  if (
-    entryCount > 2000 ||
-    directorySize === 0xffffffff ||
-    offset === 0xffffffff ||
-    offset + directorySize > eocdOffset
-  ) {
-    throw new BadRequestException(
-      'Office document archive exceeds supported limits',
-    );
-  }
-
-  let totalExpandedBytes = 0;
-  let hasContentTypes = false;
-  let hasMainDocument = false;
-  for (let entry = 0; entry < entryCount; entry += 1) {
-    if (offset + 46 > eocdOffset || file.readUInt32LE(offset) !== 0x02014b50) {
-      throw new BadRequestException('Office document archive is invalid');
-    }
-
-    const flags = file.readUInt16LE(offset + 8);
-    const uncompressedSize = file.readUInt32LE(offset + 24);
-    const fileNameLength = file.readUInt16LE(offset + 28);
-    const extraLength = file.readUInt16LE(offset + 30);
-    const commentLength = file.readUInt16LE(offset + 32);
-    const nameStart = offset + 46;
-    const nameEnd = nameStart + fileNameLength;
-    if (nameEnd + extraLength + commentLength > eocdOffset || flags & 0x0001) {
-      throw new BadRequestException(
-        'Office document archive contains unsupported entries',
-      );
-    }
-
-    const entryName = file.subarray(nameStart, nameEnd).toString('utf8');
-    if (
-      entryName.startsWith('/') ||
-      entryName.includes('..') ||
-      entryName.includes('\\')
-    ) {
-      throw new BadRequestException(
-        'Office document archive contains an unsafe path',
-      );
-    }
-    totalExpandedBytes += uncompressedSize;
-    if (
-      uncompressedSize > 20 * 1024 * 1024 ||
-      totalExpandedBytes > 50 * 1024 * 1024
-    ) {
-      throw new BadRequestException(
-        'Office document archive expands beyond supported limits',
-      );
-    }
-    hasContentTypes ||= entryName === '[Content_Types].xml';
-    hasMainDocument ||= requiredFiles.includes(entryName);
-    offset = nameEnd + extraLength + commentLength;
-  }
-
-  if (!hasContentTypes || !hasMainDocument) {
-    throw new BadRequestException(
-      'Office document archive does not contain the expected files',
-    );
   }
 }
 

@@ -1,3 +1,4 @@
+import { bumpCaseRevision, lockCaseRevision } from './case-revision.js';
 import {
   BadRequestException,
   ConflictException,
@@ -179,18 +180,23 @@ export class CaseExtractionService {
     }
 
     const extracted =
-      source.document.extractedText === null
+      source.document.extractedText === null &&
+      !['image/png', 'image/jpeg'].includes(source.document.mimeType)
         ? await this.documents.getText(source.document.id, ownerId)
         : {
-            content: source.document.extractedText,
+            content: source.document.extractedText ?? '',
             pages: source.document.extractedPages,
             extractionStatus: source.document.extractionStatus,
             extractionTruncated: source.document.extractionTruncated,
           };
+    const isImage = ['image/png', 'image/jpeg'].includes(
+      source.document.mimeType,
+    );
     if (
-      extracted.extractionStatus !== 'EXTRACTED' ||
-      extracted.extractionTruncated ||
-      !extracted.content.trim()
+      !isImage &&
+      (extracted.extractionStatus !== 'EXTRACTED' ||
+        extracted.extractionTruncated ||
+        !extracted.content.trim())
     ) {
       throw new BadRequestException(
         'Review the document extraction before requesting AI suggestions',
@@ -205,7 +211,10 @@ export class CaseExtractionService {
         extractionTruncated: true,
       },
     });
-    if (!refreshed?.extractedText || refreshed.extractionTruncated) {
+    if (
+      !refreshed ||
+      (!isImage && (!refreshed.extractedText || refreshed.extractionTruncated))
+    ) {
       throw new NotFoundException('Extracted document text is not available');
     }
     const pages = normalizePages(refreshed.extractedPages);
@@ -213,7 +222,9 @@ export class CaseExtractionService {
       source.sourceCode,
       source.document.fileName,
       source.document.sourceMetadata,
-      refreshed.extractedText,
+      extracted.extractionStatus === 'EXTRACTED'
+        ? (refreshed.extractedText ?? '')
+        : '',
       pages,
     );
     const image =
@@ -221,6 +232,7 @@ export class CaseExtractionService {
       source.document.mimeType === 'image/jpeg'
         ? await this.documents.getImageForAnalysis(source.document.id, ownerId)
         : null;
+    const current = await this.cases.requireOwnedCase(caseId, ownerId);
     const response = await this.ai.createStructuredResponse({
       instructions: [
         'Extract document type, facts, events, quantities, dates, amounts, and attributed statements from a transport survey case document.',
@@ -243,46 +255,103 @@ export class CaseExtractionService {
 
     const parsed = parseExtractionResponse(
       response.value,
-      pages,
-      refreshed.extractedText,
+      'pages' in context ? (context.pages ?? []) : [],
+      'text' in context
+        ? (context.text ?? '')
+        : (context.pages ?? []).map((page) => page.text).join('\n'),
       Boolean(image),
     );
-    const proposal = await this.prisma.caseExtractionProposal.create({
-      data: {
-        caseId,
-        caseDocumentId: source.id,
-        createdById: ownerId,
-        documentType: parsed.documentType,
-        model: response.model,
-        promptVersion: EXTRACTION_PROMPT_VERSION,
-        openQuestions: parsed.openQuestions,
-        suggestions: {
-          create: [
-            ...parsed.facts.map((fact) => ({
-              kind: ExtractionSuggestionKind.FACT,
-              content: fact as unknown as Prisma.InputJsonObject,
-            })),
-            ...parsed.events.map((event) => ({
-              kind: ExtractionSuggestionKind.EVENT,
-              content: event as unknown as Prisma.InputJsonObject,
-            })),
-            ...(parsed.imageDescription
-              ? [
-                  {
-                    kind: ExtractionSuggestionKind.IMAGE_DESCRIPTION,
-                    content: {
-                      description: parsed.imageDescription,
-                    } as Prisma.InputJsonObject,
-                  },
-                ]
-              : []),
-          ],
+    if (source.document.mimeType === 'message/rfc822') {
+      const metadata = source.document.sourceMetadata;
+      const sender =
+        isRecord(metadata) && typeof metadata.sender === 'string'
+          ? metadata.sender.slice(0, 240)
+          : source.senderOrAuthor;
+      const seenFacts = new Set<string>();
+      // Email statements and quoted repetitions remain attributed reports, never independent observations.
+      parsed.facts = parsed.facts
+        .map((fact) => ({
+          ...fact,
+          epistemicStatus:
+            fact.epistemicStatus === EvidenceStatus.DISPUTED
+              ? EvidenceStatus.DISPUTED
+              : EvidenceStatus.REPORTED,
+          attribution: fact.attribution || sender,
+        }))
+        .filter((fact) => {
+          const key = JSON.stringify([
+            fact.fieldKey,
+            fact.numericValue ?? fact.valueText,
+            fact.unit,
+            fact.attribution,
+            fact.epistemicStatus,
+          ]);
+          if (seenFacts.has(key)) return false;
+          seenFacts.add(key);
+          return true;
+        });
+      const seenEvents = new Set<string>();
+      parsed.events = parsed.events
+        .map((event) => ({
+          ...event,
+          epistemicStatus:
+            event.epistemicStatus === EvidenceStatus.DISPUTED
+              ? EvidenceStatus.DISPUTED
+              : EvidenceStatus.REPORTED,
+          attribution: event.attribution || sender,
+        }))
+        .filter((event) => {
+          const key = JSON.stringify([
+            event.event,
+            event.date,
+            event.dateType,
+            event.attribution,
+            event.epistemicStatus,
+          ]);
+          if (seenEvents.has(key)) return false;
+          seenEvents.add(key);
+          return true;
+        });
+    }
+    const proposal = await this.prisma.$transaction(async (transaction) => {
+      await lockCaseRevision(transaction, caseId, ownerId, current.revision);
+      return transaction.caseExtractionProposal.create({
+        data: {
+          caseId,
+          caseDocumentId: source.id,
+          createdById: ownerId,
+          documentType: parsed.documentType,
+          model: response.model,
+          promptVersion: EXTRACTION_PROMPT_VERSION,
+          openQuestions: parsed.openQuestions,
+          suggestions: {
+            create: [
+              ...parsed.facts.map((fact) => ({
+                kind: ExtractionSuggestionKind.FACT,
+                content: fact as unknown as Prisma.InputJsonObject,
+              })),
+              ...parsed.events.map((event) => ({
+                kind: ExtractionSuggestionKind.EVENT,
+                content: event as unknown as Prisma.InputJsonObject,
+              })),
+              ...(parsed.imageDescription
+                ? [
+                    {
+                      kind: ExtractionSuggestionKind.IMAGE_DESCRIPTION,
+                      content: {
+                        description: parsed.imageDescription,
+                      } as Prisma.InputJsonObject,
+                    },
+                  ]
+                : []),
+            ],
+          },
         },
-      },
-      include: {
-        suggestions: { orderBy: { createdAt: 'asc' } },
-        caseDocument: { select: { sourceCode: true, displayName: true } },
-      },
+        include: {
+          suggestions: { orderBy: { createdAt: 'asc' } },
+          caseDocument: { select: { sourceCode: true, displayName: true } },
+        },
+      });
     });
 
     return {
@@ -295,11 +364,17 @@ export class CaseExtractionService {
     };
   }
 
-  async list(caseId: string, ownerId: number) {
+  async list(
+    caseId: string,
+    ownerId: number,
+    pagination: PaginationDto = new PaginationDto(),
+  ) {
     await this.cases.requireOwnedCase(caseId, ownerId);
     return this.prisma.caseExtractionProposal.findMany({
       where: { caseId },
       orderBy: { createdAt: 'desc' },
+      take: pagination.limit,
+      skip: pagination.offset,
       include: {
         caseDocument: { select: { sourceCode: true, displayName: true } },
         suggestions: { orderBy: { createdAt: 'asc' } },
@@ -313,20 +388,20 @@ export class CaseExtractionService {
     ownerId: number,
     dto: AcceptExtractionDto,
   ) {
-    await this.cases.requireOwnedCase(caseId, ownerId);
+    const current = await this.cases.requireOwnedCase(caseId, ownerId);
     const suggestionIds = [...new Set(dto.suggestionIds)];
     const proposal = await this.prisma.caseExtractionProposal.findFirst({
       where: { id: proposalId, caseId },
       include: {
         caseDocument: {
           include: {
-            caseDocument: { select: { availability: true } },
             document: {
               select: {
                 id: true,
                 deleted_at: true,
                 extractedText: true,
                 extractedPages: true,
+                mimeType: true,
               },
             },
           },
@@ -340,14 +415,24 @@ export class CaseExtractionService {
     if (
       proposal.caseDocument.availability !== 'ORIGINAL_ACCESSIBLE' ||
       sourceDocument?.deleted_at ||
-      !sourceDocument?.extractedText
+      (!sourceDocument?.extractedText &&
+        !['image/png', 'image/jpeg'].includes(sourceDocument?.mimeType ?? ''))
     ) {
       throw new ConflictException('The source text is no longer available');
     }
-    const sourceText = sourceDocument.extractedText;
-    const pageTexts = normalizePages(sourceDocument.extractedPages);
+    const sourceText = sourceDocument?.extractedText ?? '';
+    const pageTexts = normalizePages(sourceDocument?.extractedPages);
 
     return this.prisma.$transaction(async (transaction) => {
+      await lockCaseRevision(transaction, caseId, ownerId, current.revision);
+      const pending = await transaction.caseExtractionProposal.updateMany({
+        where: { id: proposalId, caseId, status: 'PENDING' },
+        data: { status: 'PENDING' },
+      });
+      if (pending.count !== 1)
+        throw new ConflictException(
+          'Extraction proposal has already been reviewed',
+        );
       const suggestions = await transaction.caseExtractionSuggestion.findMany({
         where: { id: { in: suggestionIds }, proposalId },
       });
@@ -413,6 +498,7 @@ export class CaseExtractionService {
             data: {
               caseId,
               event: event.event,
+              attribution: event.attribution,
               date: event.date ? new Date(event.date) : null,
               dateType: event.dateType,
               epistemicStatus: event.epistemicStatus,
@@ -456,7 +542,7 @@ export class CaseExtractionService {
       }
 
       if (caseDataChanged) {
-        await bumpRevision(transaction, caseId);
+        await bumpCaseRevision(transaction, caseId);
       }
       const pendingCount = await transaction.caseExtractionSuggestion.count({
         where: { proposalId, status: 'PENDING' },
@@ -495,6 +581,14 @@ export class CaseExtractionService {
     }
 
     return this.prisma.$transaction(async (transaction) => {
+      const pending = await transaction.caseExtractionProposal.updateMany({
+        where: { id: proposalId, caseId, status: 'PENDING' },
+        data: { status: 'REJECTED', reviewedAt: new Date() },
+      });
+      if (pending.count !== 1)
+        throw new ConflictException(
+          'Extraction proposal has already been reviewed',
+        );
       await transaction.caseExtractionSuggestion.updateMany({
         where: { proposalId, status: 'PENDING' },
         data: {
@@ -568,7 +662,9 @@ export function parseExtractionResponse(
   if (
     !isRecord(value) ||
     !Array.isArray(value.facts) ||
-    !Array.isArray(value.events)
+    !Array.isArray(value.events) ||
+    value.facts.length > 100 ||
+    value.events.length > 100
   ) {
     throw new BadRequestException(
       'AI extraction response did not match its schema',
@@ -632,6 +728,7 @@ function sanitizeFact(item: Record<string, unknown>): FactSuggestion | null {
     typeof item.fieldKey !== 'string' ||
     !/^[a-z][a-z0-9_.-]{1,159}$/i.test(item.fieldKey) ||
     typeof item.valueText !== 'string' ||
+    (!item.valueText.trim() && item.numericValue === null) ||
     !isFactStatus(item.epistemicStatus) ||
     typeof item.excerpt !== 'string' ||
     (item.numericValue !== null &&
@@ -796,22 +893,7 @@ function toJson(value: unknown): Prisma.InputJsonValue {
   return value as Prisma.InputJsonValue;
 }
 
-async function bumpRevision(
-  transaction: Prisma.TransactionClient,
-  caseId: string,
-): Promise<void> {
-  const approved = await transaction.case.updateMany({
-    where: { id: caseId, status: 'APPROVED' },
-    data: { revision: { increment: 1 }, status: 'DRAFT' },
-  });
-  if (!approved.count) {
-    await transaction.case.update({
-      where: { id: caseId },
-      data: { revision: { increment: 1 } },
-    });
-  }
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
+import { PaginationDto } from '../common/pagination.dto.js';

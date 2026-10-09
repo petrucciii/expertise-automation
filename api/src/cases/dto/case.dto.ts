@@ -1,16 +1,20 @@
+import { OptionalField, HasText } from '../../common/validation.js';
 import { Type } from 'class-transformer';
 import {
   IsArray,
+  ArrayMaxSize,
   IsDateString,
   IsDefined,
   IsEnum,
   IsInt,
+  IsIn,
   IsNotEmpty,
   IsObject,
   IsOptional,
   IsString,
   IsUUID,
   MaxLength,
+  Max,
   Min,
   ValidateNested,
 } from 'class-validator';
@@ -22,60 +26,72 @@ import {
   EvidenceStatus,
   EventDateType,
 } from '../../generated/prisma/client.js';
+import {
+  REPORT_TEMPLATE_ID,
+  REPORT_TEMPLATE_VERSION,
+} from '../report-template.js';
 
 export class AssignmentDto {
-  @IsOptional()
+  @OptionalField()
   @IsString()
   @MaxLength(254)
   client?: string;
 
-  @IsOptional()
+  @OptionalField()
   @IsArray()
   @IsString({ each: true })
+  @ArrayMaxSize(50)
+  @MaxLength(2000, { each: true })
   requestedScope?: string[];
 
-  @IsOptional()
+  @OptionalField()
   @IsArray()
   @IsString({ each: true })
+  @ArrayMaxSize(50)
+  @MaxLength(2000, { each: true })
   limitations?: string[];
 }
 
 export class CreateCaseDto {
   @IsString()
   @IsNotEmpty()
+  @HasText()
   @MaxLength(200)
   title: string;
 
-  @IsOptional()
+  @OptionalField()
   @IsString()
   @MaxLength(120)
   internalReference?: string;
 
-  @IsOptional()
+  @OptionalField()
   @IsString()
   @MaxLength(160)
   publicReference?: string;
 
-  @IsOptional()
+  @OptionalField()
   @IsEnum(CaseFamily)
   caseFamily?: CaseFamily;
 
-  @IsOptional()
+  @OptionalField()
   @IsObject()
   @ValidateNested()
   @Type(() => AssignmentDto)
   assignment?: AssignmentDto;
 
-  @IsOptional()
+  @OptionalField()
   @IsArray()
   @IsString({ each: true })
+  @ArrayMaxSize(50)
+  @MaxLength(2000, { each: true })
   openQuestions?: string[];
 }
 
 export class UpdateCaseDto {
-  @IsOptional()
+  @OptionalField()
   @IsString()
   @IsNotEmpty()
+  @HasText()
   @MaxLength(200)
   title?: string;
 
@@ -89,75 +105,79 @@ export class UpdateCaseDto {
   @MaxLength(160)
   publicReference?: string | null;
 
-  @IsOptional()
+  @OptionalField()
   @IsEnum(CaseFamily)
   caseFamily?: CaseFamily;
 
-  @IsOptional()
+  @OptionalField()
   @IsEnum(CaseStatus)
   status?: CaseStatus;
 
-  @IsOptional()
+  @OptionalField()
   @IsObject()
   @ValidateNested()
   @Type(() => AssignmentDto)
   assignment?: AssignmentDto;
 
-  @IsOptional()
+  @OptionalField()
   @IsArray()
   @IsString({ each: true })
+  @ArrayMaxSize(50)
+  @MaxLength(2000, { each: true })
   openQuestions?: string[];
 
-  @IsOptional()
+  @OptionalField()
   @IsString()
   @MaxLength(120)
+  @IsIn([REPORT_TEMPLATE_ID])
   reportTemplateId?: string;
 
   @IsOptional()
   @IsString()
   @MaxLength(80)
+  @IsIn([REPORT_TEMPLATE_VERSION])
   clicheSetVersion?: string | null;
 }
 
 export class AttachCaseDocumentDto {
-  @IsOptional()
+  @OptionalField()
   @IsUUID()
   documentId?: string;
 
-  @IsOptional()
+  @OptionalField()
   @IsString()
   @MaxLength(240)
   displayName?: string;
 
-  @IsOptional()
+  @OptionalField()
   @IsString()
   @MaxLength(80)
   documentType?: string;
 
-  @IsOptional()
+  @OptionalField()
   @IsString()
   @MaxLength(1200)
   verificationPurpose?: string;
 
-  @IsOptional()
+  @OptionalField()
   @IsString()
   @MaxLength(30000)
   excerptText?: string;
 
-  @IsOptional()
-  @IsDateString()
+  @OptionalField()
+  @IsDateString({ strict: true })
   documentDate?: string;
 
-  @IsOptional()
+  @OptionalField()
   @IsString()
   @MaxLength(240)
   senderOrAuthor?: string;
 
-  @IsOptional()
+  @OptionalField()
   @IsEnum(DocumentAvailability)
   availability?: DocumentAvailability;
 
-  @IsOptional()
+  @OptionalField()
   @IsObject()
   metadata?: Record<string, unknown>;
 }
@@ -165,41 +185,50 @@ export class AttachCaseDocumentDto {
 export class EvidenceReferenceDto {
   @IsString()
   @IsNotEmpty()
+  @HasText()
   @MaxLength(40)
   sourceCode: string;
 
-  @IsOptional()
+  @OptionalField()
   @Type(() => Number)
   @IsInt()
   @Min(1)
+  @Max(2147483647)
   pageNumber?: number;
 
-  @IsOptional()
+  @OptionalField()
   @IsString()
   @MaxLength(3000)
   excerpt?: string;
 }
 
 export class CreateCaseEventDto {
+  @OptionalField()
+  @IsString()
+  @MaxLength(240)
+  attribution?: string;
+
   @IsString()
   @IsNotEmpty()
+  @HasText()
   @MaxLength(4000)
   event: string;
 
-  @IsOptional()
-  @IsDateString()
+  @OptionalField()
+  @IsDateString({ strict: true })
   date?: string;
 
-  @IsOptional()
+  @OptionalField()
   @IsEnum(EventDateType)
   dateType?: EventDateType;
 
   @IsEnum(EvidenceStatus)
   epistemicStatus: EvidenceStatus;
 
-  @IsOptional()
+  @OptionalField()
   @IsArray()
   @ValidateNested({ each: true })
+  @ArrayMaxSize(20)
   @Type(() => EvidenceReferenceDto)
   sources?: EvidenceReferenceDto[];
 }
@@ -207,18 +236,19 @@ export class CreateCaseEventDto {
 export class CreateCaseEvidenceDto {
   @IsString()
   @IsNotEmpty()
+  @HasText()
   @MaxLength(160)
   fieldKey: string;
 
   @IsDefined()
   value: unknown;
 
-  @IsOptional()
+  @OptionalField()
   @IsString()
   @MaxLength(40)
   unit?: string;
 
-  @IsOptional()
+  @OptionalField()
   @IsString()
   @MaxLength(160)
   comparisonGroup?: string;
@@ -226,25 +256,26 @@ export class CreateCaseEvidenceDto {
   @IsEnum(EvidenceStatus)
   epistemicStatus: EvidenceStatus;
 
-  @IsOptional()
+  @OptionalField()
   @IsString()
   @MaxLength(240)
   attribution?: string;
 
-  @IsOptional()
+  @OptionalField()
   @IsArray()
   @ValidateNested({ each: true })
+  @ArrayMaxSize(20)
   @Type(() => EvidenceReferenceDto)
   sources?: EvidenceReferenceDto[];
 }
 
 export class CreateCaseIssueDto {
-  @IsOptional()
+  @OptionalField()
   @IsString()
   @MaxLength(120)
   ruleId?: string;
 
-  @IsOptional()
+  @OptionalField()
   @IsString()
   @MaxLength(80)
   ruleVersion?: string;
@@ -252,34 +283,37 @@ export class CreateCaseIssueDto {
   @IsEnum(ChecklistStatus)
   status: ChecklistStatus;
 
-  @IsOptional()
+  @OptionalField()
   @IsString()
   @MaxLength(40)
   severity?: string;
 
   @IsString()
   @IsNotEmpty()
+  @HasText()
   @MaxLength(240)
   title: string;
 
   @IsString()
   @IsNotEmpty()
+  @HasText()
   @MaxLength(8000)
   explanation: string;
 
-  @IsOptional()
+  @OptionalField()
   @IsString()
   @MaxLength(4000)
   suggestedCheck?: string;
 
-  @IsOptional()
+  @OptionalField()
   @IsArray()
   @IsUUID(undefined, { each: true })
+  @ArrayMaxSize(100)
   evidenceIds?: string[];
 }
 
 export class UpdateCaseIssueDto {
-  @IsOptional()
+  @OptionalField()
   @IsEnum(ChecklistStatus)
   status?: ChecklistStatus;
 
@@ -288,14 +322,16 @@ export class UpdateCaseIssueDto {
   @MaxLength(40)
   severity?: string | null;
 
-  @IsOptional()
+  @OptionalField()
   @IsString()
   @MaxLength(240)
+  @HasText()
   title?: string;
 
-  @IsOptional()
+  @OptionalField()
   @IsString()
   @MaxLength(8000)
+  @HasText()
   explanation?: string;
 
   @IsOptional()
@@ -303,8 +339,9 @@ export class UpdateCaseIssueDto {
   @MaxLength(4000)
   suggestedCheck?: string | null;
 
-  @IsOptional()
+  @OptionalField()
   @IsArray()
   @IsUUID(undefined, { each: true })
+  @ArrayMaxSize(100)
   evidenceIds?: string[];
 }

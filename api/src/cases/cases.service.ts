@@ -1,3 +1,4 @@
+import { bumpCaseRevision, lockCaseRevision } from './case-revision.js';
 import {
   BadRequestException,
   ConflictException,
@@ -6,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { PaginationDto } from '../common/pagination.dto.js';
 import {
   AttachCaseDocumentDto,
   CreateCaseDto,
@@ -50,10 +52,12 @@ export class CasesService {
     });
   }
 
-  async list(ownerId: number) {
+  async list(ownerId: number, pagination: PaginationDto = new PaginationDto()) {
     return this.prisma.case.findMany({
       where: { ownerId, deletedAt: null },
       orderBy: { updatedAt: 'desc' },
+      take: pagination.limit,
+      skip: pagination.offset,
       select: {
         id: true,
         title: true,
@@ -158,9 +162,9 @@ export class CasesService {
         : { clicheSetVersion: dto.clicheSetVersion }),
     };
 
-    const updated = await this.prisma.case.update({
-      where: { id: caseId },
-      data,
+    const updated = await this.prisma.$transaction(async (transaction) => {
+      await lockCaseRevision(transaction, caseId, ownerId, current.revision);
+      return transaction.case.update({ where: { id: caseId }, data });
     });
     return {
       ...updated,
@@ -216,6 +220,16 @@ export class CasesService {
 
     try {
       return await this.prisma.$transaction(async (transaction) => {
+        await lockCaseRevision(transaction, caseId, ownerId, current.revision);
+        if (
+          dto.documentId &&
+          !(await transaction.document.findFirst({
+            where: { id: dto.documentId, ownerId, deleted_at: null },
+            select: { id: true },
+          }))
+        ) {
+          throw new NotFoundException('Document not found');
+        }
         const counter = await transaction.case.update({
           where: { id: caseId },
           data: {
@@ -265,6 +279,7 @@ export class CasesService {
         data: {
           caseId,
           event: dto.event.trim(),
+          attribution: dto.attribution?.trim() || null,
           date: dto.date ? new Date(dto.date) : null,
           dateType: dto.dateType ?? 'UNKNOWN',
           epistemicStatus: dto.epistemicStatus,
@@ -279,7 +294,7 @@ export class CasesService {
           },
         },
       });
-      await bumpRevision(transaction, caseId);
+      await bumpCaseRevision(transaction, caseId);
       return event;
     });
   }
@@ -333,7 +348,7 @@ export class CasesService {
           },
         },
       });
-      await bumpRevision(transaction, caseId);
+      await bumpCaseRevision(transaction, caseId);
       return evidence;
     });
   }
@@ -360,7 +375,7 @@ export class CasesService {
         },
         include: { evidence: true },
       });
-      await bumpRevision(transaction, caseId);
+      await bumpCaseRevision(transaction, caseId);
       return issue;
     });
   }
@@ -411,7 +426,7 @@ export class CasesService {
         }
       }
 
-      await bumpRevision(transaction, caseId);
+      await bumpCaseRevision(transaction, caseId);
 
       return transaction.caseIssue.findUniqueOrThrow({
         where: { id: issue.id },
@@ -483,7 +498,11 @@ export class CasesService {
         caseId,
         sourceCode: { in: sources.map((source) => source.sourceCode) },
       },
-      include: { document: { select: { extractedText: true } } },
+      include: {
+        document: {
+          select: { extractedText: true, extractedPages: true, mimeType: true },
+        },
+      },
     });
     const byCode = new Map(attached.map((row) => [row.sourceCode, row]));
     if (attached.length !== sources.length) {
@@ -494,11 +513,42 @@ export class CasesService {
 
     return sources.map((source) => {
       const row = byCode.get(source.sourceCode)!;
+      if (
+        status === 'OBSERVED' &&
+        (![
+          'survey_report',
+          'survey_notes',
+          'inspection_record',
+          'site_inspection_notes',
+        ].includes(row.documentType ?? '') ||
+          row.document?.mimeType === 'message/rfc822' ||
+          !['ORIGINAL_ACCESSIBLE', 'EXCERPT_ONLY'].includes(row.availability))
+      ) {
+        throw new BadRequestException(
+          'Observed evidence must cite accessible survey notes or an inspection record',
+        );
+      }
       const availableText = row.document?.extractedText || row.excerptText;
+      const pages = Array.isArray(row.document?.extractedPages)
+        ? row.document.extractedPages
+        : [];
+      const citedPage = source.pageNumber
+        ? pages.find(
+            (page) => isRecord(page) && page.pageNumber === source.pageNumber,
+          )
+        : undefined;
+      if (source.pageNumber && pages.length && !citedPage)
+        throw new BadRequestException(
+          'The cited page is not present in the extracted source',
+        );
+      const citedText =
+        isRecord(citedPage) && typeof citedPage.text === 'string'
+          ? citedPage.text
+          : availableText;
       if (
         source.excerpt &&
-        availableText &&
-        !containsNormalized(availableText, source.excerpt)
+        citedText &&
+        !containsNormalized(citedText, source.excerpt)
       ) {
         throw new BadRequestException(
           `The excerpt does not match the extracted text for ${source.sourceCode}`,
@@ -568,7 +618,7 @@ function ensureJsonValue(value: unknown): void {
   } catch {
     throw new BadRequestException('Value must be valid JSON data');
   }
-  if (!serialized || serialized.length > 20_000) {
+  if (!serialized || Buffer.byteLength(serialized, 'utf8') > 20_000) {
     throw new BadRequestException('Value must not exceed 20 KB');
   }
 }
@@ -576,22 +626,6 @@ function ensureJsonValue(value: unknown): void {
 function containsNormalized(text: string, excerpt: string): boolean {
   const normalize = (value: string) => value.replace(/\s+/g, ' ').trim();
   return normalize(text).includes(normalize(excerpt));
-}
-
-async function bumpRevision(
-  transaction: Prisma.TransactionClient,
-  caseId: string,
-): Promise<void> {
-  const approved = await transaction.case.updateMany({
-    where: { id: caseId, status: 'APPROVED' },
-    data: { revision: { increment: 1 }, status: 'DRAFT' },
-  });
-  if (!approved.count) {
-    await transaction.case.update({
-      where: { id: caseId },
-      data: { revision: { increment: 1 } },
-    });
-  }
 }
 
 function hasPrismaCode(error: unknown, code: string): boolean {

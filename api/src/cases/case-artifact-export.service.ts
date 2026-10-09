@@ -47,6 +47,17 @@ export class CaseArtifactExportService {
     const baseName = safeFileName(
       record.publicReference ?? record.internalReference ?? record.title,
     );
+    if (
+      [
+        CaseArtifactType.PRELIMINARY_REVIEW,
+        CaseArtifactType.SURVEY_REPORT_DRAFT,
+      ].includes(type as 'PRELIMINARY_REVIEW' | 'SURVEY_REPORT_DRAFT') &&
+      artifact.status !== 'APPROVED'
+    ) {
+      throw new ConflictException(
+        'Approve the narrative artifact before exporting it',
+      );
+    }
 
     if (type === CaseArtifactType.STRUCTURED_CASE) {
       return {
@@ -132,19 +143,19 @@ async function createRegisterWorkbook(
       continue;
     }
     sheet.addRow({
-      sourceCode: toCellText(entry.sourceCode),
-      document: toCellText(entry.document),
-      documentType: toCellText(entry.documentType),
-      availability: toCellText(entry.availability),
-      extractionStatus: toCellText(entry.extractionStatus),
-      extractionTruncated: toCellText(entry.extractionTruncated),
-      extractionReviewedAt: toCellText(entry.extractionReviewedAt),
-      sha256: toCellText(entry.sha256),
-      excerptText: toCellText(entry.excerptText),
-      verificationPurpose: toCellText(entry.verificationPurpose),
-      documentDate: toCellText(entry.documentDate),
-      senderOrAuthor: toCellText(entry.senderOrAuthor),
-      emailMetadata: toCellText(entry.emailMetadata),
+      sourceCode: toSpreadsheetCellText(entry.sourceCode),
+      document: toSpreadsheetCellText(entry.document),
+      documentType: toSpreadsheetCellText(entry.documentType),
+      availability: toSpreadsheetCellText(entry.availability),
+      extractionStatus: toSpreadsheetCellText(entry.extractionStatus),
+      extractionTruncated: toSpreadsheetCellText(entry.extractionTruncated),
+      extractionReviewedAt: toSpreadsheetCellText(entry.extractionReviewedAt),
+      sha256: toSpreadsheetCellText(entry.sha256),
+      excerptText: toSpreadsheetCellText(entry.excerptText),
+      verificationPurpose: toSpreadsheetCellText(entry.verificationPurpose),
+      documentDate: toSpreadsheetCellText(entry.documentDate),
+      senderOrAuthor: toSpreadsheetCellText(entry.senderOrAuthor),
+      emailMetadata: toSpreadsheetCellText(entry.emailMetadata),
     });
   }
   sheet.autoFilter = { from: 'A1', to: `M${Math.max(1, sheet.rowCount)}` };
@@ -204,21 +215,23 @@ function appendReportSections(children: Paragraph[], content: unknown): void {
     }
     children.push(
       new Paragraph({
-        text: toCellText(section.heading) || toCellText(section.id),
+        text: toText(section.heading) || toText(section.id),
         heading: HeadingLevel.HEADING_1,
       }),
     );
     const paragraphs = Array.isArray(section.paragraphs)
       ? section.paragraphs
-      : [];
+      : typeof section.paragraph === 'string'
+        ? [section.paragraph]
+        : [];
     const body = paragraphs.length
-      ? paragraphs.map(toCellText)
-      : [toCellText(section.emptyText)];
+      ? paragraphs.map(toText)
+      : [toText(section.emptyText)];
     for (const text of body.filter(Boolean)) {
       children.push(new Paragraph(text));
     }
     const sources = Array.isArray(section.sourceCodes)
-      ? section.sourceCodes.map(toCellText).filter(Boolean)
+      ? section.sourceCodes.map(toText).filter(Boolean)
       : [];
     if (sources.length) {
       children.push(
@@ -244,7 +257,7 @@ function appendReportSections(children: Paragraph[], content: unknown): void {
       if (!isRecord(suggestion)) {
         continue;
       }
-      children.push(new Paragraph(toCellText(suggestion.paragraph)));
+      children.push(new Paragraph(toText(suggestion.paragraph)));
       children.push(
         new Paragraph({
           children: [
@@ -280,17 +293,15 @@ function appendPreliminaryReview(
     if (!isRecord(event)) {
       continue;
     }
-    const date = toCellText(event.date);
+    const date = toText(event.date);
     const sources = Array.isArray(event.sources)
       ? event.sources
-          .map((source) =>
-            isRecord(source) ? toCellText(source.sourceCode) : '',
-          )
+          .map((source) => (isRecord(source) ? toText(source.sourceCode) : ''))
           .filter(Boolean)
       : [];
     children.push(
       new Paragraph({
-        text: `${date ? `${date.slice(0, 10)} — ` : ''}${toCellText(event.event)} [${toCellText(event.epistemicStatus)}]${sources.length ? ` (${sources.join(', ')})` : ''}`,
+        text: `${date ? `${date.slice(0, 10)} — ` : ''}${toText(event.event)} [${toText(event.epistemicStatus)}]${event.attribution ? ` — ${toText(event.attribution)}` : ''}${sources.length ? ` (${sources.join(', ')})` : ''}`,
         bullet: { level: 0 },
       }),
     );
@@ -314,18 +325,18 @@ function appendPreliminaryReview(
       }
       children.push(
         new Paragraph({
-          text: toCellText(finding.title),
+          text: toText(finding.title),
           heading: HeadingLevel.HEADING_2,
         }),
       );
-      children.push(new Paragraph(toCellText(finding.concern)));
+      children.push(new Paragraph(toText(finding.concern)));
       children.push(
         new Paragraph(
-          `Alternative explanation: ${toCellText(finding.alternativeExplanation)}`,
+          `Alternative explanation: ${toText(finding.alternativeExplanation)}`,
         ),
       );
       children.push(
-        new Paragraph(`Suggested check: ${toCellText(finding.suggestedCheck)}`),
+        new Paragraph(`Suggested check: ${toText(finding.suggestedCheck)}`),
       );
       children.push(
         new Paragraph(
@@ -365,12 +376,12 @@ function formatObject(value: unknown): string {
     : (JSON.stringify(value, null, 2) ?? 'Not available');
 }
 
-function toCellText(value: unknown): string {
+function toText(value: unknown): string {
   if (value === null || value === undefined) {
     return '';
   }
   if (typeof value === 'string') {
-    return /^[\t\r\n ]*[=+\-@]/.test(value) ? `'${value}` : value;
+    return value;
   }
   if (value instanceof Date) {
     return value.toISOString();
@@ -378,8 +389,14 @@ function toCellText(value: unknown): string {
   return JSON.stringify(value) ?? '';
 }
 
+/** Protect spreadsheet viewers while preserving the original wording in Word paragraphs. */
+function toSpreadsheetCellText(value: unknown): string {
+  const text = toText(value);
+  return /^[\t\r\n ]*[=+\-@]/.test(text) ? `'${text}` : text;
+}
+
 function arrayOfStrings(value: unknown): string[] {
-  return Array.isArray(value) ? value.map(toCellText).filter(Boolean) : [];
+  return Array.isArray(value) ? value.map(toText).filter(Boolean) : [];
 }
 
 function safeFileName(value: string): string {
@@ -393,5 +410,5 @@ function safeFileName(value: string): string {
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

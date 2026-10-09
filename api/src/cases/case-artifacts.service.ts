@@ -14,6 +14,9 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { CasesService } from './cases.service.js';
 import { CaseReportService } from './case-report.service.js';
 import { CaseReviewService } from './case-review.service.js';
+import { lockCaseRevision } from './case-revision.js';
+import { readReportSection } from './report-section-context.js';
+import { PaginationDto } from '../common/pagination.dto.js';
 import type {
   GenerateArtifactDto,
   SaveArtifactRevisionDto,
@@ -84,11 +87,38 @@ export class CaseArtifactsService {
   ) {}
 
   async generateAll(caseId: string, ownerId: number) {
-    return Promise.all(
-      Object.values(CaseArtifactType).map((type) =>
-        this.generate(caseId, ownerId, type, {}),
-      ),
-    );
+    const record = await this.cases.get(caseId, ownerId);
+    const [register, preliminary, report] = await Promise.all([
+      this.cases.documentRegister(caseId, ownerId),
+      this.review.generate(caseId, ownerId),
+      this.report.generate(caseId, ownerId),
+    ]);
+    const contents: Record<CaseArtifactType, Record<string, unknown>> = {
+      STRUCTURED_CASE: toStructuredCase(record),
+      DOCUMENT_REGISTER: { schemaVersion: '1.0', caseId, documents: register },
+      PRELIMINARY_REVIEW: preliminary,
+      SURVEY_REPORT_DRAFT: report,
+    };
+    // A request for four outputs commits all four or none, including version allocation.
+    return this.prisma.$transaction(async (transaction) => {
+      await lockCaseRevision(transaction, caseId, ownerId, record.revision);
+      const artifacts = [];
+      for (const type of Object.values(CaseArtifactType)) {
+        artifacts.push(
+          await this.createVersion(
+            transaction,
+            caseId,
+            ownerId,
+            type,
+            record.revision,
+            contents[type],
+            null,
+            PROMPT_VERSION,
+          ),
+        );
+      }
+      return artifacts;
+    });
   }
 
   async generate(
@@ -100,6 +130,7 @@ export class CaseArtifactsService {
     const record = await this.cases.get(caseId, ownerId);
     let content: Record<string, unknown>;
     let model: string | null = null;
+    let basedOnArtifactId: string | null | undefined;
 
     switch (type) {
       case CaseArtifactType.STRUCTURED_CASE:
@@ -130,6 +161,7 @@ export class CaseArtifactsService {
             options.targetSection,
           );
           model = result.model;
+          basedOnArtifactId = result.basedOnArtifactId;
           content.aiSuggestions = result.sections;
         }
         break;
@@ -142,25 +174,30 @@ export class CaseArtifactsService {
       record.revision,
       content,
       model,
+      PROMPT_VERSION,
+      basedOnArtifactId,
     );
   }
 
   async list(caseId: string, ownerId: number) {
     const current = await this.cases.requireOwnedCase(caseId, ownerId);
-    const artifacts = await this.prisma.caseArtifact.findMany({
-      where: { caseId },
-      orderBy: [{ type: 'asc' }, { version: 'desc' }],
-    });
-    const latest = new Map<string, (typeof artifacts)[number]>();
-    for (const artifact of artifacts) {
-      if (!latest.has(artifact.type)) {
-        latest.set(artifact.type, artifact);
-      }
-    }
-    return [...latest.values()].map((artifact) => ({
-      ...artifact,
-      isStale: artifact.caseRevision !== current.revision,
-    }));
+    // Fetch one row per type instead of loading the entire version history.
+    const artifacts = await Promise.all(
+      Object.values(CaseArtifactType)
+        .sort()
+        .map((type) =>
+          this.prisma.caseArtifact.findFirst({
+            where: { caseId, type },
+            orderBy: { version: 'desc' },
+          }),
+        ),
+    );
+    return artifacts
+      .filter((artifact) => artifact !== null)
+      .map((artifact) => ({
+        ...artifact,
+        isStale: artifact.caseRevision !== current.revision,
+      }));
   }
 
   async getLatest(caseId: string, ownerId: number, type: CaseArtifactType) {
@@ -175,11 +212,18 @@ export class CaseArtifactsService {
     return { ...artifact, isStale: artifact.caseRevision !== current.revision };
   }
 
-  async listVersions(caseId: string, ownerId: number, type: CaseArtifactType) {
+  async listVersions(
+    caseId: string,
+    ownerId: number,
+    type: CaseArtifactType,
+    pagination: PaginationDto = new PaginationDto(),
+  ) {
     const current = await this.cases.requireOwnedCase(caseId, ownerId);
     const versions = await this.prisma.caseArtifact.findMany({
       where: { caseId, type },
       orderBy: { version: 'desc' },
+      take: pagination.limit,
+      skip: pagination.offset,
     });
     return versions.map((version) => ({
       ...version,
@@ -235,15 +279,6 @@ export class CaseArtifactsService {
       'manual-edit-1.0',
     );
 
-    if (
-      type === CaseArtifactType.SURVEY_REPORT_DRAFT &&
-      current.status === 'APPROVED'
-    ) {
-      await this.prisma.case.update({
-        where: { id: caseId },
-        data: { status: 'DRAFT' },
-      });
-    }
     return revision;
   }
 
@@ -266,9 +301,31 @@ export class CaseArtifactsService {
     }
 
     return this.prisma.$transaction(async (transaction) => {
-      const updated = await transaction.caseArtifact.update({
-        where: { id: artifactId },
+      await lockCaseRevision(transaction, caseId, ownerId, current.revision);
+      const latest = await transaction.caseArtifact.findFirst({
+        where: { caseId, type: artifact.type },
+        orderBy: { version: 'desc' },
+        select: { id: true },
+      });
+      if (latest?.id !== artifactId)
+        throw new ConflictException(
+          'Only the latest artifact version can be approved',
+        );
+      const approved = await transaction.caseArtifact.updateMany({
+        where: {
+          id: artifactId,
+          caseId,
+          status: 'DRAFT',
+          caseRevision: current.revision,
+        },
         data: { status: ArtifactStatus.APPROVED, approvedAt: new Date() },
+      });
+      if (approved.count !== 1)
+        throw new ConflictException(
+          'Artifact is already approved or out of date',
+        );
+      const updated = await transaction.caseArtifact.findUniqueOrThrow({
+        where: { id: artifactId },
       });
       if (artifact.type === CaseArtifactType.SURVEY_REPORT_DRAFT) {
         await transaction.case.update({
@@ -288,37 +345,71 @@ export class CaseArtifactsService {
     content: Record<string, unknown>,
     model: string | null,
     promptVersion = PROMPT_VERSION,
+    basedOnArtifactId?: string | null,
+  ) {
+    return this.prisma.$transaction(async (transaction) => {
+      await lockCaseRevision(transaction, caseId, ownerId, caseRevision);
+      if (basedOnArtifactId !== undefined) {
+        const base = await transaction.caseArtifact.findFirst({
+          where: { caseId, type },
+          orderBy: { version: 'desc' },
+          select: { id: true },
+        });
+        if ((base?.id ?? null) !== basedOnArtifactId)
+          throw new ConflictException(
+            'Report section changed during generation. Reload it and retry.',
+          );
+      }
+      return this.createVersion(
+        transaction,
+        caseId,
+        ownerId,
+        type,
+        caseRevision,
+        content,
+        model,
+        promptVersion,
+      );
+    });
+  }
+
+  private async createVersion(
+    transaction: Prisma.TransactionClient,
+    caseId: string,
+    ownerId: number,
+    type: CaseArtifactType,
+    caseRevision: number,
+    content: Record<string, unknown>,
+    model: string | null,
+    promptVersion: string,
   ) {
     const jsonContent = JSON.parse(
       JSON.stringify(content),
     ) as Prisma.InputJsonValue;
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      const latest = await this.prisma.caseArtifact.findFirst({
-        where: { caseId, type },
-        orderBy: { version: 'desc' },
-        select: { version: true },
+    const latest = await transaction.caseArtifact.findFirst({
+      where: { caseId, type },
+      orderBy: { version: 'desc' },
+      select: { version: true },
+    });
+    if (type === CaseArtifactType.SURVEY_REPORT_DRAFT) {
+      await transaction.case.updateMany({
+        where: { id: caseId, status: 'APPROVED' },
+        data: { status: 'DRAFT' },
       });
-      try {
-        return await this.prisma.caseArtifact.create({
-          data: {
-            caseId,
-            createdById: ownerId,
-            type,
-            version: (latest?.version ?? 0) + 1,
-            caseRevision,
-            status: ArtifactStatus.DRAFT,
-            content: jsonContent,
-            model,
-            promptVersion,
-          },
-        });
-      } catch (error) {
-        if (!hasPrismaCode(error, 'P2002') || attempt === 2) {
-          throw error;
-        }
-      }
     }
-    throw new ConflictException('Could not allocate an artifact version');
+    return transaction.caseArtifact.create({
+      data: {
+        caseId,
+        createdById: ownerId,
+        type,
+        version: (latest?.version ?? 0) + 1,
+        caseRevision,
+        status: ArtifactStatus.DRAFT,
+        content: jsonContent,
+        model,
+        promptVersion,
+      },
+    });
   }
 
   private async generateAiReview(
@@ -360,6 +451,14 @@ export class CaseArtifactsService {
     targetSection?: string,
   ) {
     const context = await this.aiContext(caseId, ownerId, record);
+    const currentSection = targetSection
+      ? await readReportSection(
+          this.prisma,
+          caseId,
+          record.revision,
+          targetSection,
+        )
+      : null;
     const response = await this.ai.createStructuredResponse({
       instructions: [
         'Draft suggested Italian report paragraphs for a cargo and transport surveyor.',
@@ -377,15 +476,21 @@ export class CaseArtifactsService {
       ]
         .filter(Boolean)
         .join(' '),
-      input: JSON.stringify(context),
+      input: JSON.stringify({
+        ...context,
+        targetSection: targetSection ?? null,
+        currentReportSection: currentSection,
+      }),
       schema: DRAFT_SCHEMA,
     });
 
     return {
       model: response.model,
+      basedOnArtifactId: currentSection?.artifactId,
       sections: validateDraftSuggestions(
         response.value,
         new Set(record.documents.map((document) => document.sourceCode)),
+        targetSection,
       ),
     };
   }
@@ -417,7 +522,7 @@ export class CaseArtifactsService {
     let remaining = 32_000;
     const documents = sourceRows.map((source) => {
       const extracted =
-        source.availability === 'ORIGINAL_ACCESSIBLE' &&
+        ['ORIGINAL_ACCESSIBLE', 'EXCERPT_ONLY'].includes(source.availability) &&
         source.document?.deleted_at === null &&
         source.document?.extractionStatus === 'EXTRACTED'
           ? source.document.extractedText
@@ -468,6 +573,7 @@ export class CaseArtifactsService {
         event: event.event,
         date: event.date,
         dateType: event.dateType,
+        attribution: event.attribution,
         epistemicStatus: event.epistemicStatus,
         sourceRefs: event.sourceLinks.map((source) => ({
           sourceCode: source.caseDocument.sourceCode,
@@ -574,6 +680,7 @@ export function toStructuredCase(
     })),
     events: record.events.map((event) => ({
       event: event.event,
+      attribution: event.attribution,
       date: event.date,
       date_type: event.dateType.toLowerCase(),
       epistemic_status: event.epistemicStatus.toLowerCase(),
@@ -670,19 +777,53 @@ function validateManualRevision(
     throw new BadRequestException('Artifact revision must be a JSON object');
   }
   const serialized = JSON.stringify(value);
-  if (!serialized || serialized.length > 1_000_000) {
+  if (!serialized || Buffer.byteLength(serialized, 'utf8') > 1_000_000) {
     throw new BadRequestException('Artifact revision must not exceed 1 MB');
   }
   validateRevisionReferences(value, sourceCodes, evidenceIds);
 
   if (type === CaseArtifactType.SURVEY_REPORT_DRAFT) {
-    if (!Array.isArray(value.sections)) {
+    if (
+      !Array.isArray(value.sections) ||
+      value.sections.length === 0 ||
+      value.sections.length > 100
+    ) {
       throw new BadRequestException('Report revision must contain sections');
     }
+    const sectionIds = new Set<string>();
     for (const section of value.sections) {
       if (!isRecord(section)) {
         throw new BadRequestException('Report section is invalid');
       }
+      if (
+        typeof section.id !== 'string' ||
+        !section.id.trim() ||
+        section.id.length > 120 ||
+        sectionIds.has(section.id) ||
+        (section.heading !== undefined &&
+          (typeof section.heading !== 'string' ||
+            section.heading.length > 240)) ||
+        (section.emptyText !== undefined &&
+          typeof section.emptyText !== 'string') ||
+        (section.paragraphs !== undefined &&
+          (!Array.isArray(section.paragraphs) ||
+            section.paragraphs.length > 100 ||
+            section.paragraphs.some(
+              (paragraph) =>
+                typeof paragraph !== 'string' || paragraph.length > 20_000,
+            ))) ||
+        (section.paragraph !== undefined &&
+          (typeof section.paragraph !== 'string' ||
+            section.paragraph.length > 20_000)) ||
+        (section.sourceCodes !== undefined &&
+          (!Array.isArray(section.sourceCodes) ||
+            section.sourceCodes.length > 20))
+      ) {
+        throw new BadRequestException(
+          'Report section does not match its schema',
+        );
+      }
+      sectionIds.add(section.id);
       const hasText =
         (Array.isArray(section.paragraphs) &&
           section.paragraphs.some(
@@ -706,6 +847,39 @@ function validateManualRevision(
       }
     }
   }
+
+  if (type === CaseArtifactType.PRELIMINARY_REVIEW) {
+    if (
+      !Array.isArray(value.chronology) ||
+      !isRecord(value.computedChecks) ||
+      !Array.isArray(value.surveyorChecklist) ||
+      !Array.isArray(value.openQuestions) ||
+      !Array.isArray(value.limitations)
+    )
+      throw new BadRequestException(
+        'Preliminary review revision does not match its schema',
+      );
+    if (
+      value.chronology.some(
+        (event) =>
+          !isRecord(event) ||
+          typeof event.event !== 'string' ||
+          !Array.isArray(event.sources),
+      ) ||
+      value.surveyorChecklist.some(
+        (issue) => !isRecord(issue) || typeof issue.title !== 'string',
+      ) ||
+      [...value.openQuestions, ...value.limitations].some(
+        (text) => typeof text !== 'string',
+      )
+    )
+      throw new BadRequestException(
+        'Preliminary review entries do not match their schema',
+      );
+  }
+
+  if (value.aiSuggestions !== undefined && !Array.isArray(value.aiSuggestions))
+    throw new BadRequestException('AI suggestions must be an array');
 
   if (Array.isArray(value.aiSuggestions)) {
     for (const suggestion of value.aiSuggestions) {
@@ -792,6 +966,16 @@ function validateReviewFindings(
     ) {
       return [];
     }
+    // Reject the entire suggestion when any reference is fabricated; keeping its prose would be misleading.
+    if (
+      finding.sourceCodes.some(
+        (code) => typeof code !== 'string' || !sourceCodes.has(code),
+      ) ||
+      finding.evidenceIds.some(
+        (id) => typeof id !== 'string' || !evidenceIds.has(id),
+      )
+    )
+      return [];
     const citedSources = finding.sourceCodes.filter(
       (code): code is string =>
         typeof code === 'string' && sourceCodes.has(code),
@@ -816,7 +1000,11 @@ function validateReviewFindings(
   });
 }
 
-function validateDraftSuggestions(value: unknown, sourceCodes: Set<string>) {
+function validateDraftSuggestions(
+  value: unknown,
+  sourceCodes: Set<string>,
+  targetSection?: string,
+) {
   if (!isRecord(value) || !Array.isArray(value.sections)) {
     return [];
   }
@@ -830,6 +1018,13 @@ function validateDraftSuggestions(value: unknown, sourceCodes: Set<string>) {
     ) {
       return [];
     }
+    if (
+      section.sourceCodes.some(
+        (code) => typeof code !== 'string' || !sourceCodes.has(code),
+      )
+    )
+      return [];
+    if (targetSection && section.id !== targetSection) return [];
     const citedSources = section.sourceCodes.filter(
       (code): code is string =>
         typeof code === 'string' && sourceCodes.has(code),
@@ -850,14 +1045,5 @@ function validateDraftSuggestions(value: unknown, sourceCodes: Set<string>) {
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
-
-function hasPrismaCode(error: unknown, code: string): boolean {
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    'code' in error &&
-    error.code === code
-  );
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

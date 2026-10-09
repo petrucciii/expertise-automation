@@ -2,7 +2,9 @@ import {
   Injectable,
   Logger,
   ServiceUnavailableException,
+  BadRequestException,
 } from '@nestjs/common';
+import { Ajv } from 'ajv';
 
 export type StructuredResponse = {
   value: unknown;
@@ -34,6 +36,7 @@ const GENERATE_CONTENT_ENDPOINT =
 export class GeminiGenerateContentService {
   private readonly logger = new Logger(GeminiGenerateContentService.name);
   private readonly apiKey = process.env.GEMINI_API_KEY;
+  private readonly validator = new Ajv({ strict: false, allErrors: false });
 
   async createStructuredResponse(
     request: StructuredGenerationRequest,
@@ -43,6 +46,14 @@ export class GeminiGenerateContentService {
         'AI features are not configured on this server',
       );
     }
+    if (Buffer.byteLength(request.input, 'utf8') > 512_000) {
+      throw new BadRequestException(
+        'AI context exceeds the supported size. Select a smaller set of sources.',
+      );
+    }
+    const validate = this.validator.compile(request.schema);
+    // A single deadline covers the entire cascade, including response-body reads.
+    const signal = AbortSignal.timeout(60_000);
 
     for (const [index, model] of MODEL_CASCADE.entries()) {
       let response: Response;
@@ -51,7 +62,8 @@ export class GeminiGenerateContentService {
           `${GENERATE_CONTENT_ENDPOINT}/${encodeURIComponent(model)}:generateContent`,
           {
             method: 'POST',
-            signal: AbortSignal.timeout(60_000),
+            signal,
+            redirect: 'error',
             headers: {
               'Content-Type': 'application/json',
               'x-goog-api-key': this.apiKey,
@@ -92,6 +104,7 @@ export class GeminiGenerateContentService {
       }
 
       if (response.status === 429) {
+        await response.body?.cancel().catch(() => undefined);
         const nextModel = MODEL_CASCADE[index + 1];
         if (nextModel) {
           this.logger.warn(
@@ -107,6 +120,7 @@ export class GeminiGenerateContentService {
       }
 
       if (!response.ok) {
+        await response.body?.cancel().catch(() => undefined);
         this.logger.warn(
           `Gemini returned HTTP ${response.status} for ${model}`,
         );
@@ -115,7 +129,14 @@ export class GeminiGenerateContentService {
         );
       }
 
-      const payload: unknown = await response.json().catch(() => null);
+      let payload: unknown;
+      try {
+        payload = await readBoundedJson(response);
+      } catch {
+        throw new ServiceUnavailableException(
+          'AI provider returned an unreadable response',
+        );
+      }
       const outputText = readOutputText(payload);
       if (!outputText) {
         throw new ServiceUnavailableException(
@@ -124,7 +145,9 @@ export class GeminiGenerateContentService {
       }
 
       try {
-        return { value: JSON.parse(outputText) as unknown, model };
+        const value: unknown = JSON.parse(outputText);
+        if (!validate(value)) throw new Error('Response schema mismatch');
+        return { value, model };
       } catch {
         throw new ServiceUnavailableException(
           'AI provider returned an invalid structured response',
@@ -147,6 +170,7 @@ function readOutputText(payload: unknown): string | null {
   if (!isRecord(candidate) || !isRecord(candidate.content)) {
     return null;
   }
+  if (candidate.finishReason !== 'STOP') return null;
 
   const parts = candidate.content.parts;
   if (!Array.isArray(parts)) {
@@ -154,15 +178,40 @@ function readOutputText(payload: unknown): string | null {
   }
 
   const textParts = parts.flatMap((part) =>
-    isRecord(part) && typeof part.text === 'string' ? [part.text] : [],
+    isRecord(part) && part.thought !== true && typeof part.text === 'string'
+      ? [part.text]
+      : [],
   );
   return textParts.length > 0 ? textParts.join('') : null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function safeErrorName(error: unknown): string {
-  return error instanceof Error ? error.name : 'UnknownError';
+  return error instanceof Error &&
+    ['AbortError', 'TimeoutError', 'TypeError'].includes(error.name)
+    ? error.name
+    : 'RequestError';
+}
+
+async function readBoundedJson(response: Response): Promise<unknown> {
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error('Missing response body');
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      size += chunk.value.byteLength;
+      if (size > 2_000_000) throw new Error('Response exceeds size limit');
+      chunks.push(chunk.value);
+    }
+    return JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown;
+  } finally {
+    await reader.cancel().catch(() => undefined);
+    reader.releaseLock();
+  }
 }

@@ -1,17 +1,12 @@
-import {
-  IsBoolean,
-  IsObject,
-  IsOptional,
-  IsString,
-  MaxLength,
-} from 'class-validator';
+import { OptionalField } from '../../common/validation.js';
+import { IsBoolean, IsObject, IsString, MaxLength } from 'class-validator';
 
 export class GenerateArtifactDto {
-  @IsOptional()
+  @OptionalField()
   @IsBoolean()
   enhanced?: boolean;
 
-  @IsOptional()
+  @OptionalField()
   @IsString()
   @MaxLength(120)
   targetSection?: string;

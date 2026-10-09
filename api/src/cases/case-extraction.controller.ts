@@ -7,7 +7,9 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Query,
 } from '@nestjs/common';
+import { PaginationDto } from '../common/pagination.dto.js';
 import { CurrentUser } from '@nestjs/authentication';
 import type { AuthenticatedUser } from '../users/user.type.js';
 import { CaseExtractionService } from './case-extraction.service.js';
@@ -52,8 +54,9 @@ export class CaseExtractionController {
   list(
     @Param('caseId', ParseUUIDPipe) caseId: string,
     @CurrentUser() user: AuthenticatedUser,
+    @Query() pagination: PaginationDto,
   ) {
-    return this.extraction.list(caseId, user.id);
+    return this.extraction.list(caseId, user.id, pagination);
   }
 
   @Post('extractions/:proposalId/accept')

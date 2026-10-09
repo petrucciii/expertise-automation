@@ -1,10 +1,11 @@
+import { OptionalField, HasText } from '../../common/validation.js';
 import {
   IsIn,
   IsInt,
   IsNotEmpty,
-  IsOptional,
   IsString,
   MaxLength,
+  Max,
   Min,
 } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -16,42 +17,45 @@ const THOUSANDS_SEPARATORS = ['.', ',', ' ', '_'];
 export class CalculateNumericColumnDto {
   @IsString()
   @IsNotEmpty()
+  @HasText()
   @MaxLength(160)
   fieldKey: string;
 
   @IsString()
   @IsNotEmpty()
+  @HasText()
   @MaxLength(240)
   columnHeader: string;
 
-  @IsOptional()
+  @OptionalField()
   @IsString()
   @MaxLength(120)
   worksheetName?: string;
 
-  @IsOptional()
+  @OptionalField()
   @Type(() => Number)
   @IsInt()
   @Min(1)
+  @Max(20_000)
   headerRow?: number;
 
   @IsIn(OPERATIONS)
   operation: 'SUM' | 'MIN' | 'MAX' | 'MEAN' | 'COUNT' | 'RANGE';
 
-  @IsOptional()
+  @OptionalField()
   @IsString()
   @MaxLength(40)
   unit?: string;
 
-  @IsOptional()
+  @OptionalField()
   @IsIn(DECIMAL_SEPARATORS)
   decimalSeparator?: '.' | ',';
 
-  @IsOptional()
+  @OptionalField()
   @IsIn(THOUSANDS_SEPARATORS)
   thousandsSeparator?: '.' | ',' | ' ' | '_';
 
-  @IsOptional()
+  @OptionalField()
   @IsString()
   @MaxLength(160)
   comparisonGroup?: string;

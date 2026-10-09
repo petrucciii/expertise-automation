@@ -190,6 +190,8 @@ model Document {
   caseLinks              CaseDocument[]
 
   @@index([extractionReviewedById])
+  @@index([ownerId, deleted_at, created_at])
+  @@index([ownerId, hash])
 }
 
 model ChatDocument {
@@ -290,6 +292,7 @@ model CaseEvent {
   date                 DateTime?
   dateType             EventDateType             @default(UNKNOWN) @map("date_type")
   epistemicStatus      EvidenceStatus            @map("epistemic_status")
+  attribution          String?                   @db.VarChar(240)
   caseDocumentId       String?                   @map("case_document_id") @db.Uuid
   source               CaseDocument?             @relation(fields: [caseDocumentId], references: [id], onDelete: Restrict)
   pageNumber           Int?                      @map("page_number")

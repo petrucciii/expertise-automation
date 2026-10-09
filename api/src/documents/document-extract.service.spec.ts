@@ -60,6 +60,12 @@ describe('DocumentExtractService spreadsheet extraction', () => {
         }),
         updateMany,
       },
+      $transaction: vi.fn(async (callback: (transaction: unknown) => unknown) =>
+        callback({
+          document: { updateMany },
+          caseDocument: { findMany: vi.fn().mockResolvedValue([]) },
+        }),
+      ),
     } as unknown as PrismaService;
     const service = new DocumentExtractService(prisma);
 
@@ -103,6 +109,12 @@ async function extractDocument(
       }),
       updateMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
+    $transaction: vi.fn(async (callback: (transaction: unknown) => unknown) =>
+      callback({
+        document: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+        caseDocument: { findMany: vi.fn().mockResolvedValue([]) },
+      }),
+    ),
   } as unknown as PrismaService;
 
   return new DocumentExtractService(prisma).getText('document-1', 9);

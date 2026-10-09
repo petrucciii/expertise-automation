@@ -13,6 +13,7 @@ import {
 import { CurrentUser } from '@nestjs/authentication';
 import type { AuthenticatedUser } from '../users/user.type.js';
 import { ChatService } from './chat.service.js';
+import { PaginationDto } from '../common/pagination.dto.js';
 import {
   CreateChatDto,
   GetChatsDto,
@@ -55,8 +56,9 @@ export class ChatController {
   get(
     @Param('chatId', ParseUUIDPipe) chatId: string,
     @CurrentUser() user: AuthenticatedUser,
+    @Query() pagination: PaginationDto,
   ) {
-    return this.chatService.get(chatId, user.id);
+    return this.chatService.get(chatId, user.id, pagination);
   }
 
   @Post(':chatId/messages')

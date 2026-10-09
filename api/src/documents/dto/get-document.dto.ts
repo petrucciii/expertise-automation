@@ -1,11 +1,14 @@
-import { IsOptional, IsString, IsUUID } from 'class-validator';
+import { OptionalField } from '../../common/validation.js';
+import { IsString, IsUUID, MaxLength } from 'class-validator';
+import { PaginationDto } from '../../common/pagination.dto.js';
 
-export class GetDocumentDto {
-  @IsOptional()
+export class GetDocumentDto extends PaginationDto {
+  @OptionalField()
   @IsUUID()
   id?: string;
 
-  @IsOptional()
+  @OptionalField()
   @IsString()
+  @MaxLength(240)
   fileName?: string;
 }

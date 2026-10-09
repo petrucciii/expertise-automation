@@ -88,7 +88,11 @@ export function summarizeNumericColumn(
   ) {
     const cell = worksheet.getRow(rowNumber).getCell(columnNumber);
     const rawValue = cell.value;
-    if (rawValue === null || rawValue === undefined || rawValue === '') {
+    if (
+      rawValue === null ||
+      rawValue === undefined ||
+      (typeof rawValue === 'string' && !rawValue.trim())
+    ) {
       blankCellCount += 1;
       continue;
     }
@@ -129,7 +133,7 @@ export function summarizeNumericColumn(
     nonNumericCellCount,
     formulaCellsExcluded,
     operation: options.operation,
-    result: Number(result.toPrecision(15)),
+    result,
     formula: operationFormula(options.operation),
   };
 }
@@ -181,7 +185,9 @@ function parseNumericCell(
       /[.*+?^${}()|[\]\\]/g,
       '\\$&',
     );
-    const integerPart = normalized.split(decimalSeparator, 1)[0];
+    const [integerPart, fractionPart = ''] = normalized.split(decimalSeparator);
+    // A grouping separator in the fractional part is malformed, not a removable decoration.
+    if (fractionPart.includes(thousandsSeparator)) return null;
     const hasThousandsSeparator = integerPart.includes(thousandsSeparator);
     if (
       hasThousandsSeparator &&
@@ -207,21 +213,25 @@ function calculate(values: number[], operation: NumericOperation): number {
   let sum = 0;
   let compensation = 0;
   for (const value of values) {
-    const adjusted = value - compensation;
-    const next = sum + adjusted;
-    compensation = next - sum - adjusted;
+    // Neumaier summation retains small terms when opposite large measurements cancel.
+    const next = sum + value;
+    compensation +=
+      Math.abs(sum) >= Math.abs(value)
+        ? sum - next + value
+        : value - next + sum;
     sum = next;
   }
+  const total = sum + compensation;
 
   switch (operation) {
     case 'SUM':
-      return sum;
+      return total;
     case 'MIN':
       return Math.min(...values);
     case 'MAX':
       return Math.max(...values);
     case 'MEAN':
-      return sum / values.length;
+      return total / values.length;
     case 'COUNT':
       return values.length;
     case 'RANGE':

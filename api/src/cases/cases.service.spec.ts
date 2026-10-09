@@ -100,6 +100,7 @@ describe('CasesService evidence sources', () => {
     const transaction = {
       case: {
         update: vi.fn().mockResolvedValue({ nextDocumentNumber: 2 }),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
       caseDocument: { create },
     };

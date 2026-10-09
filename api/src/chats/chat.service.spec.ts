@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { validateCitations } from './chat.service.js';
 
 describe('validateCitations', () => {
-  const documents = [
+  const documents: Parameters<typeof validateCitations>[1] = [
     {
       id: 'doc-1',
       documentId: 'doc-1',

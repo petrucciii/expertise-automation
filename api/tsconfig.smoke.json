@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "./.smoke",
+    "rootDir": ".",
+    "incremental": false,
+    "declaration": false
+  },
+  "include": ["test/gemini.integration.ts", "test/fixtures/cargo-documents.ts"],
+  "exclude": ["node_modules", "src/generated"]
+}

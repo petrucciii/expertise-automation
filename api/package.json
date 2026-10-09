@@ -6,31 +6,38 @@
   "private": true,
   "license": "UNLICENSED",
   "type": "module",
-  "prisma": {
-    "seed": "node --loader ts-node/esm prisma/seed.ts"
-  },
   "scripts": {
     "build": "nest build",
-    "deploy": "nest deploy",
-    "format": "prettier --write \"src/**/*.ts\"",
+    "format": "prettier --write \"src/**/*.{ts,mjs}\" \"test/**/*.{ts,js,html}\" \"*.ts\" \"*.json\" \"prisma/seed.ts\"",
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
-    "start:prod": "node dist/main",
-    "lint": "oxlint --type-aware src/",
+    "start:prod": "node dist/main.js",
+    "lint": "oxlint --type-aware --deny-warnings src/ test/ prisma/seed.ts *.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:cov": "vitest run --coverage",
+    "test:cov": "node --max-old-space-size=2048 node_modules/vitest/vitest.mjs run --config vitest.config.coverage.ts --coverage",
+    "pretest:cov": "npm run build",
     "test:debug": "vitest --inspect-brk --no-file-parallelism",
-    "test:e2e": "vitest run --config ./vitest.config.e2e.ts"
+    "test:e2e": "vitest run --config ./vitest.config.e2e.ts",
+    "test:ocr": "tsx test/ocr.integration.ts",
+    "test:live": "node .smoke/test/gemini.integration.js",
+    "pretest:live": "npm run build && tsc -p tsconfig.smoke.json",
+    "typecheck": "tsc --noEmit",
+    "format:check": "prettier --check \"src/**/*.{ts,mjs}\" \"test/**/*.{ts,js,html}\" \"*.ts\" \"*.json\" \"prisma/seed.ts\"",
+    "prebuild": "prisma generate",
+    "pretest:e2e": "npm run build",
+    "check": "npm run build && npm run typecheck && npm run lint && npm run format:check && npm test && npm run test:e2e"
   },
   "dependencies": {
     "@nestjs/authentication": "^0.1.0",
     "@nestjs/common": "^12.0.1",
     "@nestjs/core": "^12.0.1",
     "@nestjs/platform-express": "^12.0.1",
+    "@nestjs/throttler": "^6.7.1",
     "@prisma/adapter-pg": "^7.10.0",
     "@prisma/client": "^7.10.0",
+    "ajv": "^8.20.0",
     "bcrypt": "^6.0.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
@@ -38,27 +45,31 @@
     "docx": "^9.9.0",
     "dotenv": "^18.0.5",
     "exceljs": "^4.4.0",
+    "helmet": "^8.3.0",
     "mammoth": "^1.13.0",
     "pdf-parse": "^2.4.5",
     "pg": "^8.23.1",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
+    "sharp": "^0.35.5",
     "tesseract.js": "^7.0.0"
   },
   "devDependencies": {
     "@nestjs/cli": "^12.0.0",
-    "@nestjs/mau": "^0.2.6",
     "@nestjs/schematics": "^12.0.0",
     "@nestjs/testing": "^12.0.1",
+    "@testcontainers/postgresql": "^12.2.0",
     "@types/bcrypt": "^6.0.0",
     "@types/cookie-parser": "^1.4.10",
     "@types/express": "^5.0.0",
+    "@types/jsdom": "^30.0.0",
     "@types/multer": "^2.3.0",
     "@types/node": "^24.0.0",
-    "@types/pdf-parse": "^1.1.5",
     "@types/pg": "^8.23.1",
     "@types/supertest": "^7.0.0",
+    "@vitest/coverage-istanbul": "^4.1.11",
     "@vitest/coverage-v8": "^4.1.2",
+    "jsdom": "^30.1.2",
     "oxlint": "^1.58.0",
     "oxlint-tsgolint": "^7.0.2001",
     "prettier": "^3.4.2",
@@ -67,7 +78,19 @@
     "supertest": "^7.0.0",
     "tsx": "^4.23.15",
     "typescript": "^6.0.2",
-    "vite-tsconfig-paths": "^5.1.4",
     "vitest": "^4.1.2"
+  },
+  "engines": {
+    "node": ">=24.15.0 <25"
+  },
+  "overrides": {
+    "deepmerge-ts": "^8.0.2",
+    "mysql2": "^3.24.5",
+    "exceljs": {
+      "uuid": "^11.1.1"
+    },
+    "mammoth": {
+      "argparse": "^2.0.1"
+    }
   }
 }

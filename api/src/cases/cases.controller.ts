@@ -8,7 +8,9 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Query,
 } from '@nestjs/common';
+import { PaginationDto } from '../common/pagination.dto.js';
 import { CurrentUser } from '@nestjs/authentication';
 import type { AuthenticatedUser } from '../users/user.type.js';
 import {
@@ -33,8 +35,11 @@ export class CasesController {
   }
 
   @Get()
-  list(@CurrentUser() user: AuthenticatedUser) {
-    return this.cases.list(user.id);
+  list(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() pagination: PaginationDto,
+  ) {
+    return this.cases.list(user.id, pagination);
   }
 
   @Get(':caseId')

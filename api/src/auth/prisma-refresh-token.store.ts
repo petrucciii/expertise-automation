@@ -39,7 +39,12 @@ export class PrismaRefreshTokenStore implements RefreshTokenStore {
 
   async saveRefreshToken(record: RefreshTokenRecord): Promise<void> {
     const userId = Number(record.userId);
-    if (!Number.isSafeInteger(userId) || userId <= 0) {
+    if (
+      !/^\d+$/.test(record.userId) ||
+      !Number.isSafeInteger(userId) ||
+      userId <= 0 ||
+      userId > 2147483647
+    ) {
       throw new Error('Refresh token contains an invalid user id');
     }
 
@@ -69,7 +74,7 @@ export class PrismaRefreshTokenStore implements RefreshTokenStore {
   async markRefreshTokenUsed(id: string, at: Date): Promise<boolean> {
     // Compare-and-set: only one concurrent refresh can consume this row.
     const result = await this.prisma.refreshToken.updateMany({
-      where: { id, usedAt: null },
+      where: { id, usedAt: null, revoked: false },
       data: { usedAt: at },
     });
     return result.count === 1;

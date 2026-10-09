@@ -1,183 +1,164 @@
-const API_URL = 'http://localhost:3000/api/documents';
+﻿const API_ROOT = 'http://localhost:3000/api';
+let accessToken = '';
 
-// Display feedback notification
 function showMessage(text, isError = false) {
-    const el = document.getElementById('statusMessage');
-    el.textContent = text;
-    el.className = `alert ${isError ? 'alert-danger' : 'alert-success'}`;
-    el.classList.remove('d-none');
-    setTimeout(() => {
-        el.classList.add('d-none');
-    }, 4000);
+  const element = document.getElementById('statusMessage');
+  element.textContent = text;
+  element.className = `alert mt-3 ${isError ? 'alert-danger' : 'alert-success'}`;
 }
 
-// Fetch and render documents list
+async function apiRequest(resource, options = {}) {
+  const response = await fetch(`${API_ROOT}${resource}`, {
+    ...options,
+    headers: {
+      ...options.headers,
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+    },
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(
+      Array.isArray(error.message)
+        ? error.message.join('; ')
+        : error.message || `HTTP ${response.status}`,
+    );
+  }
+  return response;
+}
+
+async function login(event) {
+  event.preventDefault();
+  try {
+    const response = await apiRequest('/auth/login', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: document.getElementById('email').value,
+        password: document.getElementById('password').value,
+      }),
+    });
+    accessToken = (await response.json()).accessToken;
+    document.getElementById('password').value = '';
+    showMessage('Signed in. Access tokens are kept only in page memory.');
+    await loadDocuments();
+  } catch (error) {
+    showMessage(error.message, true);
+  }
+}
+
 async function loadDocuments() {
-    const tbody = document.getElementById('documentsList');
-    const emptyState = document.getElementById('emptyState');
-
-    try {
-        const response = await fetch(API_URL);
-        const docs = await response.json();
-
-        tbody.innerHTML = '';
-
-        if (!Array.isArray(docs) || docs.length === 0) {
-            emptyState.classList.remove('d-none');
-            return;
-        }
-
-        emptyState.classList.add('d-none');
-
-        docs.forEach(doc => {
-            const tr = document.createElement('tr');
-
-            const isPdf = doc.mimeType.includes('pdf');
-            const badgeClass = isPdf ? 'bg-danger' : 'bg-primary';
-            const badgeText = isPdf ? 'PDF' : 'DOCX';
-            const dateFormatted = new Date(doc.created_at).toLocaleDateString('en-US', {
-                day: '2-digit',
-                month: 'short',
-                year: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit'
-            });
-
-            tr.innerHTML = `
-                <td class="align-middle fw-medium">${escapeHtml(doc.fileName)}</td>
-                <td class="align-middle"><span class="badge ${badgeClass}">${badgeText}</span></td>
-                <td class="align-middle text-muted small">${dateFormatted}</td>
-                <td class="align-middle text-end">
-                    <button class="btn btn-sm btn-outline-primary me-1" onclick="downloadDocument('${doc.id}', '${escapeHtml(doc.fileName)}')">
-                        ⬇️ Download
-                    </button>
-                    <button class="btn btn-sm btn-outline-info me-1" onclick="extractText('${doc.id}')">
-                        📄 Extract Text
-                    </button>
-                    <button class="btn btn-sm btn-outline-danger" onclick="deleteDocument('${doc.id}')">
-                        🗑️ Delete
-                    </button>
-                </td>
-            `;
-            tbody.appendChild(tr);
-        });
-    } catch (err) {
-        console.error(err);
-        showMessage('Error loading documents list', true);
+  const tbody = document.getElementById('documentsList');
+  try {
+    const docs = await (await apiRequest('/documents?limit=100')).json();
+    tbody.replaceChildren();
+    document
+      .getElementById('emptyState')
+      .classList.toggle('d-none', docs.length > 0);
+    for (const doc of docs) {
+      const row = document.createElement('tr');
+      for (const value of [
+        doc.fileName,
+        doc.mimeType,
+        new Date(doc.created_at).toLocaleString(),
+      ]) {
+        const cell = document.createElement('td');
+        cell.textContent = value;
+        row.appendChild(cell);
+      }
+      const actions = document.createElement('td');
+      // Never interpolate a source filename into HTML or an inline JavaScript handler.
+      for (const [label, action] of [
+        ['Download', () => downloadDocument(doc.id, doc.fileName)],
+        ['Extract text', () => extractText(doc.id)],
+        ['Delete', () => deleteDocument(doc.id)],
+      ]) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'btn btn-sm btn-outline-primary me-1';
+        button.textContent = label;
+        button.addEventListener('click', action);
+        actions.appendChild(button);
+      }
+      row.appendChild(actions);
+      tbody.appendChild(row);
     }
+  } catch (error) {
+    showMessage(error.message, true);
+  }
 }
 
-// Handle file upload
-async function handleUpload() {
-    const fileInput = document.getElementById('fileInput');
-    const uploadBtn = document.getElementById('uploadBtn');
-
-    if (!fileInput.files || fileInput.files.length === 0) {
-        showMessage('Please select a file first', true);
-        return;
-    }
-
-    const file = fileInput.files[0];
+async function handleUpload(event) {
+  event.preventDefault();
+  const fileInput = document.getElementById('fileInput');
+  if (!fileInput.files?.length)
+    return showMessage('Select a file first.', true);
+  const button = document.getElementById('uploadBtn');
+  button.disabled = true;
+  try {
     const formData = new FormData();
-    formData.append('file', file);
-    formData.append('ownerId', 1);
-
-    uploadBtn.disabled = true;
-    uploadBtn.textContent = 'Uploading...';
-
-    try {
-        const response = await fetch(`${API_URL}/upload`, {
-            method: 'POST',
-            body: formData,
-        });
-
-        const data = await response.json();
-
-        if (!response.ok) {
-            throw new Error(data.message || 'Upload failed');
-        }
-
-        showMessage('Document uploaded successfully!');
-        fileInput.value = '';
-        await loadDocuments();
-    } catch (error) {
-        showMessage(error.message, true);
-    } finally {
-        uploadBtn.disabled = false;
-        uploadBtn.textContent = 'Upload Document';
-    }
+    formData.append('file', fileInput.files[0]);
+    await apiRequest('/documents/upload', { method: 'POST', body: formData });
+    fileInput.value = '';
+    showMessage('Document uploaded.');
+    await loadDocuments();
+  } catch (error) {
+    showMessage(error.message, true);
+  } finally {
+    button.disabled = false;
+  }
 }
 
-// Download document: decode Base64 into Blob
-async function downloadDocument(uuid, defaultFileName) {
-    try {
-        const response = await fetch(`${API_URL}/${uuid}/download`);
-        if (!response.ok) throw new Error('Failed to download document');
-
-        const doc = await response.json();
-
-        const byteCharacters = atob(doc.fileContent);
-        const byteNumbers = new Uint8Array(byteCharacters.length);
-        for (let i = 0; i < byteCharacters.length; i++) {
-            byteNumbers[i] = byteCharacters.charCodeAt(i);
-        }
-
-        const blob = new Blob([byteNumbers], { type: doc.mimeType });
-        const blobUrl = URL.createObjectURL(blob);
-
-        const link = document.createElement('a');
-        link.href = blobUrl;
-        link.download = doc.fileName || defaultFileName;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-
-        URL.revokeObjectURL(blobUrl);
-    } catch (error) {
-        console.error(error);
-        showMessage('Error downloading document', true);
-    }
+async function downloadDocument(id, fileName) {
+  try {
+    const response = await apiRequest(
+      `/documents/${encodeURIComponent(id)}/download`,
+    );
+    const url = URL.createObjectURL(await response.blob());
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch (error) {
+    showMessage(error.message, true);
+  }
 }
 
-// Extract Text content
-async function extractText(uuid) {
-    try {
-        const res = await fetch(`${API_URL}/${uuid}/content`);
-        if (!res.ok) throw new Error('Failed to extract text');
-        const data = await res.json();
-        alert(data.content || 'No text extracted');
-    } catch (error) {
-        console.error(error);
-        showMessage('Error extracting text', true);
-    }
+async function extractText(id) {
+  try {
+    const result = await (
+      await apiRequest(`/documents/${encodeURIComponent(id)}/content`)
+    ).json();
+    document.getElementById('extractedText').textContent =
+      result.content || 'No readable text was extracted.';
+    showMessage(`Extraction status: ${result.extractionStatus}`);
+  } catch (error) {
+    showMessage(error.message, true);
+  }
 }
 
-// Soft delete document
-async function deleteDocument(uuid) {
-    if (!confirm('Are you sure you want to delete this document?')) return;
-
-    try {
-        const response = await fetch(`${API_URL}/${uuid}`, {
-            method: 'DELETE',
-        });
-
-        if (!response.ok) {
-            const err = await response.json();
-            throw new Error(err.message || 'Error deleting document');
-        }
-
-        showMessage('Document deleted successfully');
-        await loadDocuments();
-    } catch (error) {
-        showMessage(error.message, true);
-    }
+async function deleteDocument(id) {
+  if (!confirm('Delete this document from the active register?')) return;
+  try {
+    await apiRequest(`/documents/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
+    showMessage('Document deleted.');
+    await loadDocuments();
+  } catch (error) {
+    showMessage(error.message, true);
+  }
 }
 
-function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
-
-// Initial fetch on page load
-window.addEventListener('DOMContentLoaded', loadDocuments);
+window.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('loginForm').addEventListener('submit', login);
+  document
+    .getElementById('uploadForm')
+    .addEventListener('submit', handleUpload);
+  document
+    .getElementById('refreshBtn')
+    .addEventListener('click', loadDocuments);
+});

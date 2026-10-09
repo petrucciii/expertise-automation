@@ -1,12 +1,17 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { MessageRole } from '../generated/prisma/client.js';
 import { GeminiGenerateContentService } from '../ai/gemini-generate-content.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type { SendChatMessageDto } from './dto/chat.dto.js';
+import { PaginationDto } from '../common/pagination.dto.js';
+import { lockCaseRevision } from '../cases/case-revision.js';
+import { readReportSection } from '../cases/report-section-context.js';
 
 const CHAT_SCHEMA = {
   type: 'object',
@@ -74,6 +79,7 @@ export class ChatService {
     if (!caseRecord) {
       throw new NotFoundException('Case not found');
     }
+    await this.validateSelectedDocuments(caseId, ownerId, dto.documentIds);
 
     const chat = await this.prisma.chat.create({
       data: {
@@ -106,6 +112,9 @@ export class ChatService {
 
   async addMessage(chatId: string, ownerId: number, dto: SendChatMessageDto) {
     const chat = await this.requireOwnedChat(chatId, ownerId);
+    if (!chat.caseId)
+      throw new BadRequestException('Chat is not linked to a case');
+    await this.validateSelectedDocuments(chat.caseId, ownerId, dto.documentIds);
     const userMessage = await this.prisma.message.create({
       data: {
         chatId,
@@ -130,7 +139,15 @@ export class ChatService {
     return { userMessage, assistantMessage };
   }
 
-  async list(ownerId: number, filter: { caseId?: string; title?: string }) {
+  async list(
+    ownerId: number,
+    filter: {
+      caseId?: string;
+      title?: string;
+      limit?: number;
+      offset?: number;
+    },
+  ) {
     return this.prisma.chat.findMany({
       where: {
         userId: ownerId,
@@ -141,24 +158,32 @@ export class ChatService {
           : {}),
       },
       orderBy: { updated_at: 'desc' },
+      take: filter.limit ?? 50,
+      skip: filter.offset ?? 0,
       select: {
         id: true,
         caseId: true,
         title: true,
         created_at: true,
         updated_at: true,
-        _count: { select: { messages: true } },
+        _count: { select: { messages: { where: { deleted_at: null } } } },
       },
     });
   }
 
-  async get(chatId: string, ownerId: number) {
+  async get(
+    chatId: string,
+    ownerId: number,
+    pagination: PaginationDto = new PaginationDto(),
+  ) {
     const chat = await this.prisma.chat.findFirst({
       where: { id: chatId, userId: ownerId, deleted_at: null },
       include: {
         messages: {
           where: { deleted_at: null },
-          orderBy: { created_at: 'asc' },
+          orderBy: [{ created_at: 'asc' }, { id: 'asc' }],
+          take: pagination.limit,
+          skip: pagination.offset,
           include: {
             sources: {
               include: {
@@ -272,7 +297,7 @@ export class ChatService {
     const selectedIds = dto.documentIds ? new Set(dto.documentIds) : null;
     const attachedDocuments = caseRecord.documents.filter(
       (row) =>
-        row.availability === 'ORIGINAL_ACCESSIBLE' &&
+        ['ORIGINAL_ACCESSIBLE', 'EXCERPT_ONLY'].includes(row.availability) &&
         row.document &&
         row.document.deleted_at === null &&
         (!selectedIds || selectedIds.has(row.document.id)),
@@ -363,8 +388,16 @@ export class ChatService {
       });
     }
 
+    const currentMessage = await this.prisma.message.findUniqueOrThrow({
+      where: { id: userMessageId },
+      select: { created_at: true },
+    });
     const history = await this.prisma.message.findMany({
-      where: { chatId, deleted_at: null },
+      where: {
+        chatId,
+        deleted_at: null,
+        created_at: { lte: currentMessage.created_at },
+      },
       orderBy: { created_at: 'desc' },
       take: HISTORY_LIMIT + 1,
       select: { id: true, role: true, content: true },
@@ -374,6 +407,14 @@ export class ChatService {
       .slice(0, HISTORY_LIMIT)
       .reverse();
 
+    const currentSection = dto.targetSection
+      ? await readReportSection(
+          this.prisma,
+          caseRecord.id,
+          caseRecord.revision,
+          dto.targetSection,
+        )
+      : null;
     const context = {
       case: {
         id: caseRecord.id,
@@ -388,6 +429,7 @@ export class ChatService {
         event: event.event,
         date: event.date,
         dateType: event.dateType,
+        attribution: event.attribution,
         epistemicStatus: event.epistemicStatus,
         sources: event.sourceLinks.map((source) => ({
           sourceCode: source.caseDocument.sourceCode,
@@ -418,6 +460,7 @@ export class ChatService {
       })),
       documents: documentContext,
       targetSection: dto.targetSection ?? null,
+      currentReportSection: currentSection,
     };
 
     const input = [
@@ -427,7 +470,7 @@ export class ChatService {
       JSON.stringify(
         priorMessages.map((message) => ({
           role: message.role === MessageRole.USER ? 'user' : 'assistant',
-          content: message.content,
+          content: message.content.slice(0, 2000),
         })),
       ),
       'CURRENT REQUEST:',
@@ -457,41 +500,97 @@ export class ChatService {
       modelResponse.citations,
       documentContext,
     );
-    const assistantMessage = await this.prisma.message.create({
-      data: {
-        chatId,
-        role: MessageRole.ASSISTANT,
-        content: modelResponse.answer,
-        sources: {
-          create: validCitations.map((citation) => ({
-            ...(citation.documentId
-              ? { documentId: citation.documentId }
-              : { caseDocumentId: citation.caseDocumentId }),
-            pageNumber: citation.pageNumber,
-            excerpt: citation.excerpt,
-          })),
+    // A fabricated citation invalidates the answer; stripping it would leave an unsupported claim.
+    const uniqueCitations = new Set(
+      modelResponse.citations.map(
+        (citation) =>
+          `${citation.sourceId}:${citation.pageNumber}:${normalizeText(citation.excerpt)}`,
+      ),
+    );
+    if (validCitations.length !== uniqueCitations.size) {
+      throw new ServiceUnavailableException(
+        'AI answer contains an unverifiable citation',
+      );
+    }
+    return this.prisma.$transaction(async (transaction) => {
+      // Do not publish a response against case evidence or manual prose changed during generation.
+      await lockCaseRevision(
+        transaction,
+        caseRecord.id,
+        ownerId,
+        caseRecord.revision,
+      );
+      if (currentSection) {
+        const latest = await transaction.caseArtifact.findFirst({
+          where: { caseId: caseRecord.id, type: 'SURVEY_REPORT_DRAFT' },
+          orderBy: { version: 'desc' },
+          select: { id: true },
+        });
+        if ((latest?.id ?? null) !== currentSection.artifactId)
+          throw new ConflictException(
+            'Report section changed during generation. Reload it and retry.',
+          );
+      }
+      const active = await transaction.chat.updateMany({
+        where: { id: chatId, userId: ownerId, deleted_at: null },
+        data: { updated_at: new Date() },
+      });
+      if (active.count !== 1) throw new NotFoundException('Chat not found');
+      return transaction.message.create({
+        data: {
+          chatId,
+          role: MessageRole.ASSISTANT,
+          content: modelResponse.answer,
+          sources: {
+            create: validCitations.map((citation) => ({
+              ...(citation.documentId
+                ? { documentId: citation.documentId }
+                : { caseDocumentId: citation.caseDocumentId }),
+              pageNumber: citation.pageNumber,
+              excerpt: citation.excerpt,
+            })),
+          },
         },
-      },
-      include: {
-        sources: {
-          include: {
-            document: {
-              select: { id: true, fileName: true, mimeType: true },
-            },
-            caseDocument: {
-              select: {
-                id: true,
-                sourceCode: true,
-                displayName: true,
-                availability: true,
+        include: {
+          sources: {
+            include: {
+              document: {
+                select: { id: true, fileName: true, mimeType: true },
+              },
+              caseDocument: {
+                select: {
+                  id: true,
+                  sourceCode: true,
+                  displayName: true,
+                  availability: true,
+                },
               },
             },
           },
         },
+      });
+    });
+  }
+
+  private async validateSelectedDocuments(
+    caseId: string,
+    ownerId: number,
+    selected: string[] | undefined,
+  ): Promise<void> {
+    if (selected === undefined) return;
+    const ids = [...new Set(selected)];
+    const count = await this.prisma.caseDocument.count({
+      where: {
+        caseId,
+        availability: { in: ['ORIGINAL_ACCESSIBLE', 'EXCERPT_ONLY'] },
+        documentId: { in: ids },
+        document: { ownerId, deleted_at: null },
       },
     });
-
-    return assistantMessage;
+    if (count !== ids.length)
+      throw new BadRequestException(
+        'Every selected document must belong to the linked case',
+      );
   }
 
   private async requireOwnedChat(chatId: string, ownerId: number) {
@@ -515,9 +614,13 @@ function parseModelResponse(value: unknown): ChatModelResponse {
   if (
     !isRecord(value) ||
     typeof value.answer !== 'string' ||
-    !Array.isArray(value.citations)
+    !Array.isArray(value.citations) ||
+    !value.answer.trim() ||
+    value.citations.length > 100
   ) {
-    throw new BadRequestException('AI response did not match its schema');
+    throw new ServiceUnavailableException(
+      'AI response did not match its schema',
+    );
   }
 
   const citations: ChatModelResponse['citations'] = [];
@@ -525,7 +628,9 @@ function parseModelResponse(value: unknown): ChatModelResponse {
     if (
       isRecord(item) &&
       typeof item.sourceId === 'string' &&
-      (item.pageNumber === null || Number.isSafeInteger(item.pageNumber)) &&
+      (item.pageNumber === null ||
+        (Number.isSafeInteger(item.pageNumber) &&
+          (item.pageNumber as number) > 0)) &&
       typeof item.excerpt === 'string'
     ) {
       citations.push({
@@ -533,6 +638,10 @@ function parseModelResponse(value: unknown): ChatModelResponse {
         pageNumber: item.pageNumber as number | null,
         excerpt: item.excerpt,
       });
+    } else {
+      throw new ServiceUnavailableException(
+        'AI response contains an invalid citation',
+      );
     }
   }
 
@@ -609,7 +718,7 @@ function normalizeText(value: string): string {
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function assignmentContext(value: unknown) {

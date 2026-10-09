@@ -1,5 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { CasesService } from './cases.service.js';
+import {
+  REPORT_TEMPLATE_ID,
+  REPORT_TEMPLATE_VERSION,
+} from './report-template.js';
 
 @Injectable()
 export class CaseReportService {
@@ -7,6 +11,15 @@ export class CaseReportService {
 
   async generate(caseId: string, ownerId: number) {
     const record = await this.cases.get(caseId, ownerId);
+    if (
+      record.reportTemplateId !== REPORT_TEMPLATE_ID ||
+      (record.clicheSetVersion !== null &&
+        record.clicheSetVersion !== REPORT_TEMPLATE_VERSION)
+    ) {
+      throw new BadRequestException(
+        'Configured report template is unavailable',
+      );
+    }
     const sourcedEvidence = record.evidence
       .filter((item) => item.epistemicStatus !== 'UNKNOWN')
       .map((item) => {
@@ -37,6 +50,7 @@ export class CaseReportService {
         date: event.date,
         dateType: event.dateType,
         epistemicStatus: event.epistemicStatus,
+        attribution: event.attribution,
         text: phraseForEvent(event, sources),
         sources,
       };
@@ -190,7 +204,7 @@ function phraseForEvidence(item: {
         value +
         ', con riferimento a ' +
         safeReferences +
-        '; il sistema non ha ricalcolato il dato.'
+        '; il valore è stato calcolato dal backend con il metodo e l’intervallo di righe registrati nella scheda dati.'
       );
     case 'DISPUTED':
       return (
@@ -211,6 +225,7 @@ function phraseForEvent(
     date: Date | null;
     dateType: string;
     epistemicStatus: string;
+    attribution: string | null;
   },
   sources: Array<{ sourceCode: string; pageNumber: number | null }>,
 ): string {
@@ -230,7 +245,13 @@ function phraseForEvent(
       );
     case 'REPORTED':
       return (
-        datePrefix + 'La fonte ' + references + ' riferisce che ' + event.event
+        datePrefix +
+        (event.attribution ?? 'La fonte ' + references) +
+        ' riferisce che ' +
+        event.event +
+        ' (' +
+        references +
+        ')'
       );
     case 'STATED_IN_DOCUMENT':
       return (

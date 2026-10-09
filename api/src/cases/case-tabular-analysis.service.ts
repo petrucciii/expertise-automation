@@ -9,7 +9,7 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { CasesService } from './cases.service.js';
 import type { CalculateNumericColumnDto } from '../documents/dto/calculate-numeric-column.dto.js';
 
-const CALCULATION_METHOD_VERSION = 'numeric-column-summary-1.0';
+const CALCULATION_METHOD_VERSION = 'numeric-column-summary-1.1';
 
 @Injectable()
 export class CaseTabularAnalysisService {
@@ -60,7 +60,7 @@ export class CaseTabularAnalysisService {
         thousandsSeparator: dto.thousandsSeparator,
       },
     );
-    const unit = dto.unit?.trim() || (dto.operation === 'COUNT' ? 'rows' : '');
+    const unit = dto.operation === 'COUNT' ? 'rows' : dto.unit?.trim() || '';
     if (!unit) {
       throw new BadRequestException(
         'Specify the measurement unit for a numeric calculation',
@@ -81,6 +81,9 @@ export class CaseTabularAnalysisService {
       nonNumericCellCount: calculation.nonNumericCellCount,
       formulaCellsExcluded: calculation.formulaCellsExcluded,
       sourceSha256: calculation.sourceSha256,
+      decimalSeparator: dto.decimalSeparator ?? '.',
+      thousandsSeparator: dto.thousandsSeparator ?? null,
+      numericRepresentation: 'IEEE_754_BINARY64_NEUMAIER_SUMMATION',
     };
 
     const evidence = await this.cases.addEvidence(

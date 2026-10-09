@@ -1,9 +1,10 @@
+import { OptionalField, HasText } from '../../common/validation.js';
 import { Type } from 'class-transformer';
+import { PaginationDto } from '../../common/pagination.dto.js';
 import {
   ArrayMaxSize,
   IsArray,
   IsNotEmpty,
-  IsOptional,
   IsString,
   IsUUID,
   MaxLength,
@@ -15,16 +16,17 @@ export class CreateChatDto {
 
   @IsString()
   @IsNotEmpty()
+  @HasText()
   @MaxLength(12000)
   message: string;
 
-  @IsOptional()
+  @OptionalField()
   @IsArray()
   @ArrayMaxSize(10)
   @IsUUID(undefined, { each: true })
   documentIds?: string[];
 
-  @IsOptional()
+  @OptionalField()
   @IsString()
   @MaxLength(120)
   targetSection?: string;
@@ -33,28 +35,29 @@ export class CreateChatDto {
 export class SendChatMessageDto {
   @IsString()
   @IsNotEmpty()
+  @HasText()
   @MaxLength(12000)
   message: string;
 
-  @IsOptional()
+  @OptionalField()
   @IsArray()
   @ArrayMaxSize(10)
   @IsUUID(undefined, { each: true })
   documentIds?: string[];
 
-  @IsOptional()
+  @OptionalField()
   @IsString()
   @MaxLength(120)
   targetSection?: string;
 }
 
-export class GetChatsDto {
-  @IsOptional()
+export class GetChatsDto extends PaginationDto {
+  @OptionalField()
   @Type(() => String)
   @IsUUID()
   caseId?: string;
 
-  @IsOptional()
+  @OptionalField()
   @IsString()
   @MaxLength(120)
   title?: string;

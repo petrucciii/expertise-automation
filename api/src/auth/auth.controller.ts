@@ -10,9 +10,10 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { CurrentUser, Public } from '@nestjs/authentication';
+import { Throttle } from '@nestjs/throttler';
 import type { CookieOptions, Request, Response } from 'express';
 import { AuthService } from './auth.service.js';
-import { assertTrustedOrigin } from './auth-origin.js';
+import { assertTrustedOrigin, isProductionEnvironment } from './auth-origin.js';
 import { LoginDto } from './dto/login.dto.js';
 import { RegisterDto } from './dto/register.dto.js';
 import type { AuthenticatedUser } from '../users/user.type.js';
@@ -22,6 +23,7 @@ const DEVELOPMENT_REFRESH_COOKIE = 'refresh_token';
 const PRODUCTION_REFRESH_COOKIE = '__Host-refresh_token';
 
 @Controller('auth')
+@Throttle({ default: { limit: 10, ttl: 60_000 } })
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
@@ -69,7 +71,11 @@ export class AuthController {
   ) {
     assertTrustedOrigin(request.headers.origin);
     const refreshToken = request.cookies?.[refreshCookieName()];
-    if (!refreshToken) {
+    if (
+      typeof refreshToken !== 'string' ||
+      !refreshToken ||
+      refreshToken.length > 512
+    ) {
       throw new UnauthorizedException('Refresh token is missing');
     }
 
@@ -94,7 +100,12 @@ export class AuthController {
     @Res({ passthrough: true }) response: Response,
   ): Promise<void> {
     assertTrustedOrigin(request.headers.origin);
-    await this.authService.logout(request.cookies?.[refreshCookieName()]);
+    const refreshToken: unknown = request.cookies?.[refreshCookieName()];
+    await this.authService.logout(
+      typeof refreshToken === 'string' && refreshToken.length <= 512
+        ? refreshToken
+        : undefined,
+    );
     response.clearCookie(refreshCookieName(), refreshCookieOptions());
   }
 
@@ -117,17 +128,21 @@ export class AuthController {
 }
 
 function refreshCookieName(): string {
-  return process.env.NODE_ENV === 'production'
+  return isProductionEnvironment()
     ? PRODUCTION_REFRESH_COOKIE
     : DEVELOPMENT_REFRESH_COOKIE;
 }
 
 function refreshCookieOptions(maxAge?: number): CookieOptions {
-  const isProduction = process.env.NODE_ENV === 'production';
+  const isProduction = isProductionEnvironment();
   const configuredSameSite =
-    process.env.REFRESH_COOKIE_SAME_SITE?.toLowerCase();
+    process.env.REFRESH_COOKIE_SAME_SITE?.trim().toLowerCase();
   const sameSite: CookieOptions['sameSite'] =
-    configuredSameSite === 'none' ? 'none' : 'lax';
+    configuredSameSite === 'none'
+      ? 'none'
+      : configuredSameSite === 'strict'
+        ? 'strict'
+        : 'lax';
 
   if (sameSite === 'none' && !isProduction) {
     throw new Error('SameSite=None requires HTTPS in this configuration');

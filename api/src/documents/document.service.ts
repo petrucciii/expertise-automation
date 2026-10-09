@@ -11,6 +11,8 @@ import { Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { GetDocumentDto } from './dto/get-document.dto.js';
 import { parseEmailMetadata } from './eml-parser.js';
+import { validateOfficeArchive } from './office-archive.js';
+import sharp from 'sharp';
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const DOCX_MIME =
@@ -37,6 +39,25 @@ export class DocumentService {
   async uploadDocument(file: UploadedDocumentFile, ownerId: number) {
     const displayName = sanitizeFileName(file.originalname);
     const format = detectFormat(file, displayName);
+    if (format.mimeType.startsWith('image/')) {
+      try {
+        const metadata = await sharp(file.buffer, {
+          limitInputPixels: 40_000_000,
+        }).metadata();
+        if (
+          !metadata.width ||
+          !metadata.height ||
+          metadata.width * metadata.height > 40_000_000 ||
+          (metadata.pages ?? 1) > 1
+        ) {
+          throw new Error('Unsupported image dimensions or multiple frames');
+        }
+      } catch {
+        throw new BadRequestException(
+          'Image is invalid, contains multiple frames, or exceeds the pixel limit',
+        );
+      }
+    }
     const hash = createHash('sha256').update(file.buffer).digest('hex');
 
     const existing = await this.prisma.document.findFirst({
@@ -48,7 +69,7 @@ export class DocumentService {
     }
 
     const storageDirectory = path.resolve(
-      process.env.DOCUMENT_STORAGE_DIR ??
+      process.env.DOCUMENT_STORAGE_DIR?.trim() ||
         path.join(process.cwd(), 'documents', 'uploads'),
     );
     await fs.mkdir(storageDirectory, { recursive: true, mode: 0o700 });
@@ -85,6 +106,14 @@ export class DocumentService {
       return document;
     } catch (error) {
       await fs.rm(storedPath, { force: true });
+      if (
+        typeof error === 'object' &&
+        error !== null &&
+        'code' in error &&
+        error.code === 'P2002'
+      ) {
+        throw new ConflictException('Document already exists');
+      }
       throw error;
     }
   }
@@ -95,6 +124,7 @@ export class DocumentService {
         ownerId,
         deleted_at: null,
         ...(dto?.fileName ? { fileName: dto.fileName } : {}),
+        ...(dto?.id ? { id: dto.id } : {}),
       },
       select: {
         id: true,
@@ -107,6 +137,8 @@ export class DocumentService {
         updated_at: true,
       },
       orderBy: { created_at: 'desc' },
+      take: dto?.limit ?? 50,
+      skip: dto?.offset ?? 0,
     });
   }
 
@@ -144,7 +176,7 @@ export class DocumentService {
     return document;
   }
 
-  async deleteDocument(dto: GetDocumentDto, ownerId: number) {
+  async deleteDocument(dto: Pick<GetDocumentDto, 'id'>, ownerId: number) {
     if (!dto.id) {
       throw new BadRequestException('Document id is required');
     }
@@ -153,6 +185,7 @@ export class DocumentService {
       const linkedCases = await transaction.caseDocument.findMany({
         where: { documentId: dto.id },
         select: { caseId: true },
+        orderBy: { caseId: 'asc' },
       });
       const deletedAt = new Date();
       const updated = await transaction.document.updateMany({
@@ -191,11 +224,11 @@ export class DocumentService {
 export function sanitizeFileName(originalName: string): string {
   const leaf = path.basename(originalName.replace(/\\/g, '/'));
   const cleaned = leaf.replace(/[<>:"|?*]/g, '_').trim();
-  const withoutControls = cleaned.replace(/\p{Cc}/gu, '');
+  const withoutControls = cleaned.replace(/[\p{Cc}\p{Cf}]/gu, '');
   if (!withoutControls || withoutControls === '.' || withoutControls === '..') {
     throw new BadRequestException('File name is invalid');
   }
-  return withoutControls.slice(-240);
+  return withoutControls.slice(-240).replace(/[\uD800-\uDFFF]/gu, '_');
 }
 
 export function detectFormat(
@@ -226,6 +259,7 @@ export function detectFormat(
     bytes[1] === 0x4b &&
     (suppliedMime === DOCX_MIME || suppliedMime === 'application/octet-stream')
   ) {
+    validateOfficeArchive(bytes, ['word/document.xml']);
     return { extension, mimeType: DOCX_MIME };
   }
   if (
@@ -235,6 +269,7 @@ export function detectFormat(
     bytes[1] === 0x4b &&
     (suppliedMime === XLSX_MIME || suppliedMime === 'application/octet-stream')
   ) {
+    validateOfficeArchive(bytes, ['xl/workbook.xml']);
     return { extension, mimeType: XLSX_MIME };
   }
   if (
@@ -280,7 +315,7 @@ export function detectFormat(
     return { extension, mimeType: 'image/tiff' };
   }
   if (extension === '.eml') {
-    const metadata = parseEmailMetadata(bytes.toString('utf8'));
+    const metadata = parseEmailMetadata(bytes);
     return { extension, mimeType: 'message/rfc822', sourceMetadata: metadata };
   }
 

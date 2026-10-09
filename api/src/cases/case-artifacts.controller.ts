@@ -10,7 +10,9 @@ import {
   Patch,
   Post,
   StreamableFile,
+  Query,
 } from '@nestjs/common';
+import { PaginationDto } from '../common/pagination.dto.js';
 import { CurrentUser } from '@nestjs/authentication';
 import { CaseArtifactType } from '../generated/prisma/client.js';
 import type { AuthenticatedUser } from '../users/user.type.js';
@@ -70,8 +72,9 @@ export class CaseArtifactsController {
     @Param('caseId', ParseUUIDPipe) caseId: string,
     @Param('type', new ParseEnumPipe(CaseArtifactType)) type: CaseArtifactType,
     @CurrentUser() user: AuthenticatedUser,
+    @Query() pagination: PaginationDto,
   ) {
-    return this.artifacts.listVersions(caseId, user.id, type);
+    return this.artifacts.listVersions(caseId, user.id, type, pagination);
   }
 
   @Post(':type/revisions')

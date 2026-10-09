@@ -13,7 +13,12 @@ export class UsersRepository {
 
   async findById(id: string): Promise<AuthenticatedUser | null> {
     const numericId = Number(id);
-    if (!Number.isSafeInteger(numericId) || numericId <= 0) {
+    if (
+      !/^\d+$/.test(id) ||
+      !Number.isSafeInteger(numericId) ||
+      numericId <= 0 ||
+      numericId > 2147483647
+    ) {
       return null;
     }
 

@@ -3,8 +3,38 @@ import { CaseArtifactType } from '../generated/prisma/client.js';
 import type { CaseArtifactsService } from './case-artifacts.service.js';
 import type { CasesService } from './cases.service.js';
 import { CaseArtifactExportService } from './case-artifact-export.service.js';
+import mammoth from 'mammoth';
+import ExcelJS from 'exceljs';
+import { Readable } from 'node:stream';
 
 describe('CaseArtifactExportService', () => {
+  it('neutralizes formula-like filenames in XLSX and preserves negative measurements in Word', async () => {
+    const register = await createService(CaseArtifactType.DOCUMENT_REGISTER, {
+      documents: [
+        {
+          sourceCode: 'DOC-001',
+          document: '=HYPERLINK("https://attacker.test")',
+        },
+      ],
+    }).exportLatest('case-1', 7, CaseArtifactType.DOCUMENT_REGISTER);
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.read(Readable.from([register.buffer]));
+    expect(
+      workbook.getWorksheet('Document register')?.getCell('B2').value,
+    ).toBe('\'=HYPERLINK("https://attacker.test")');
+    const report = await createService(CaseArtifactType.SURVEY_REPORT_DRAFT, {
+      sections: [
+        {
+          id: 'temperature',
+          paragraph: '-18 C is a recorded measurement.',
+          sourceCodes: ['DOC-001'],
+        },
+      ],
+    }).exportLatest('case-1', 7, CaseArtifactType.SURVEY_REPORT_DRAFT);
+    const extracted = await mammoth.extractRawText({ buffer: report.buffer });
+    expect(extracted.value).toContain('-18 C is a recorded measurement.');
+    expect(extracted.value).not.toContain("'-18 C");
+  });
   it('exports the structured case as JSON', async () => {
     const service = createService(CaseArtifactType.STRUCTURED_CASE, {
       schemaVersion: '1.0',
@@ -70,11 +100,18 @@ describe('CaseArtifactExportService', () => {
 
 function createService(type: CaseArtifactType, content: unknown) {
   const artifacts = {
-    getLatest: async () => ({ id: 'artifact-1', type, content }),
+    getLatest: async () => ({
+      id: 'artifact-1',
+      type,
+      content,
+      status: 'APPROVED',
+      caseRevision: 1,
+    }),
   } as unknown as CaseArtifactsService;
   const cases = {
     get: async () => ({
       id: 'case-1',
+      revision: 1,
       internalReference: null,
       title: 'Test case',
       publicReference: 'SURVEY-1',

@@ -199,7 +199,13 @@ describe('CaseArtifactsService manual revisions', () => {
       .mockResolvedValueOnce({ version: 1 });
     const prisma = {
       caseArtifact: { findFirst, create },
-      case: { update: vi.fn() },
+      case: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+      $transaction: vi.fn(async (callback: (transaction: unknown) => unknown) =>
+        callback({
+          caseArtifact: { findFirst, create },
+          case: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+        }),
+      ),
     } as unknown as PrismaService;
     const cases = {
       requireOwnedCase: vi.fn().mockResolvedValue({

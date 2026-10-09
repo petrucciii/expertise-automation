@@ -65,7 +65,7 @@ describe('CaseTabularAnalysisService', () => {
         sources: [{ sourceCode: 'DOC-001' }],
       }),
       expect.objectContaining({
-        methodVersion: 'numeric-column-summary-1.0',
+        methodVersion: 'numeric-column-summary-1.1',
         formulaCellsExcluded: 1,
         sourceSha256: 'a'.repeat(64),
       }),

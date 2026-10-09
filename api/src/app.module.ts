@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AuthenticationModule } from '@nestjs/authentication';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
@@ -16,6 +18,7 @@ if (!jwtSecret || Buffer.byteLength(jwtSecret, 'utf8') < 32) {
 
 @Module({
   imports: [
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 120 }]),
     // Register this before AuthModule: it provides the global auth guard and
     // the token/password services used by our providers.
     AuthenticationModule.forRoot({
@@ -38,6 +41,6 @@ if (!jwtSecret || Buffer.byteLength(jwtSecret, 'utf8') < 32) {
     DocumentModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
 export class AppModule {}

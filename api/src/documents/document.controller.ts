@@ -34,7 +34,7 @@ export class DocumentController {
   @Post('upload')
   @UseInterceptors(
     FileInterceptor('file', {
-      limits: { fileSize: MAX_UPLOAD_BYTES, files: 1 },
+      limits: { fileSize: MAX_UPLOAD_BYTES, files: 1, fields: 0, parts: 1 },
     }),
   )
   uploadDocument(
@@ -97,8 +97,15 @@ export class DocumentController {
 }
 
 function contentDisposition(fileName: string): string {
-  const fallback = fileName
+  const safeName = fileName
+    .replace(/[\p{Cc}\p{Cf}]/gu, '')
+    .replace(/[\uD800-\uDFFF]/gu, '_');
+  const fallback = safeName
     .replace(/[^\x20-\x7E]/g, '_')
     .replace(/["\\]/g, '_');
-  return `attachment; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(fileName)}`;
+  const encoded = encodeURIComponent(safeName).replace(
+    /['()*]/g,
+    (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
+  return `attachment; filename="${fallback}"; filename*=UTF-8''${encoded}`;
 }

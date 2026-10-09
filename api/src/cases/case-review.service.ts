@@ -28,6 +28,7 @@ export class CaseReviewService {
         date: event.date,
         dateType: event.dateType,
         epistemicStatus: event.epistemicStatus,
+        attribution: event.attribution,
         sources: event.sourceLinks.map((source) => ({
           sourceCode: source.caseDocument.sourceCode,
           pageNumber: source.pageNumber,

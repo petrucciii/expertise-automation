@@ -134,6 +134,7 @@ describe('parseExtractionResponse', () => {
       },
       caseEvidence: { create: vi.fn().mockResolvedValue(acceptedEvidence) },
       caseExtractionProposal: {
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
         update: vi
           .fn()
           .mockResolvedValue({ id: 'proposal-1', status: 'REVIEWED' }),
@@ -166,7 +167,9 @@ describe('parseExtractionResponse', () => {
       ),
     };
     const cases = {
-      requireOwnedCase: vi.fn().mockResolvedValue({ id: 'case-1' }),
+      requireOwnedCase: vi
+        .fn()
+        .mockResolvedValue({ id: 'case-1', revision: 1 }),
     };
     const service = new CaseExtractionService(
       prisma as unknown as PrismaService,
@@ -220,12 +223,13 @@ describe('parseExtractionResponse', () => {
       caseEvidence: { create: vi.fn() },
       caseEvent: { create: vi.fn() },
       caseExtractionProposal: {
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
         update: vi
           .fn()
           .mockResolvedValue({ id: 'proposal-1', status: 'REVIEWED' }),
       },
       case: {
-        updateMany: vi.fn(),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
         update: vi.fn(),
       },
     };
@@ -251,7 +255,9 @@ describe('parseExtractionResponse', () => {
       ),
     };
     const cases = {
-      requireOwnedCase: vi.fn().mockResolvedValue({ id: 'case-1' }),
+      requireOwnedCase: vi
+        .fn()
+        .mockResolvedValue({ id: 'case-1', revision: 1 }),
     };
     const service = new CaseExtractionService(
       prisma as unknown as PrismaService,
@@ -266,7 +272,10 @@ describe('parseExtractionResponse', () => {
 
     expect(tx.caseEvidence.create).not.toHaveBeenCalled();
     expect(tx.caseEvent.create).not.toHaveBeenCalled();
-    expect(tx.case.updateMany).not.toHaveBeenCalled();
+    expect(tx.case.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { revision: 1 } }),
+    );
+    expect(tx.case.update).not.toHaveBeenCalled();
     expect(tx.caseExtractionSuggestion.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
