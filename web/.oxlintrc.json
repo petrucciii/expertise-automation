@@ -1,0 +1,12 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["react", "typescript", "oxc", "jsx-a11y"],
+  "rules": {
+    "react/rules-of-hooks": "error",
+    "react/only-export-components": ["error", { "allowConstantExport": true }],
+    "react/exhaustive-deps": "error",
+    "typescript/no-explicit-any": "error",
+    "typescript/no-floating-promises": "error",
+    "typescript/no-misused-promises": ["error", { "checksVoidReturn": false }]
+  }
+}
