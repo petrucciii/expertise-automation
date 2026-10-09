@@ -16,7 +16,6 @@ import {
 } from '@nestjs/common';
 import { CurrentUser } from '@nestjs/authentication';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { createReadStream } from 'node:fs';
 import { DocumentService } from './document.service.js';
 import type { UploadedDocumentFile } from './document.service.js';
 import { DocumentExtractService } from './document-extract.service.js';
@@ -56,7 +55,7 @@ export class DocumentController {
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<StreamableFile> {
     const document = await this.documentService.getDownloadInfo(id, user.id);
-    return new StreamableFile(createReadStream(document.path), {
+    return new StreamableFile(document.buffer, {
       type: document.mimeType,
       disposition: contentDisposition(document.fileName),
     });
@@ -68,6 +67,15 @@ export class DocumentController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.documentExtractService.getText(id, user.id);
+  }
+
+  @Post(':id/extraction-review')
+  @HttpCode(HttpStatus.OK)
+  confirmExtractionReview(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.documentExtractService.confirmExtractionReview(id, user.id);
   }
 
   @Get()

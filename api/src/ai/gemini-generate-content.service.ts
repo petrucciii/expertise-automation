@@ -13,6 +13,10 @@ type StructuredGenerationRequest = {
   instructions: string;
   input: string;
   schema: Record<string, unknown>;
+  images?: Array<{
+    mimeType: 'image/png' | 'image/jpeg';
+    data: Buffer;
+  }>;
 };
 
 const MODEL_CASCADE = [
@@ -59,14 +63,22 @@ export class GeminiGenerateContentService {
               contents: [
                 {
                   role: 'user',
-                  parts: [{ text: request.input }],
+                  parts: [
+                    { text: request.input },
+                    ...(request.images ?? []).map((image) => ({
+                      inlineData: {
+                        mimeType: image.mimeType,
+                        data: image.data.toString('base64'),
+                      },
+                    })),
+                  ],
                 },
               ],
               generationConfig: {
                 maxOutputTokens: 8192,
                 responseFormat: {
                   text: {
-                    mimeType: 'application/json',
+                    mimeType: 'APPLICATION_JSON',
                     schema: request.schema,
                   },
                 },

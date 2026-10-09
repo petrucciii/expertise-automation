@@ -9,6 +9,7 @@ import { CaseExtractionController } from './case-extraction.controller.js';
 import { CaseExtractionService } from './case-extraction.service.js';
 import { CaseReportService } from './case-report.service.js';
 import { CaseReviewService } from './case-review.service.js';
+import { CaseTabularAnalysisService } from './case-tabular-analysis.service.js';
 import { CasesController } from './cases.controller.js';
 import { CasesService } from './cases.service.js';
 
@@ -23,6 +24,7 @@ import { CasesService } from './cases.service.js';
     CasesService,
     CaseReviewService,
     CaseReportService,
+    CaseTabularAnalysisService,
     CaseArtifactsService,
     CaseArtifactExportService,
     CaseExtractionService,

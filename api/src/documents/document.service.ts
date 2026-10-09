@@ -15,6 +15,8 @@ import { parseEmailMetadata } from './eml-parser.js';
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const DOCX_MIME =
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+const XLSX_MIME =
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
 type FileFormat = {
   extension: string;
@@ -75,6 +77,8 @@ export class DocumentService {
           fileName: true,
           mimeType: true,
           extractionStatus: true,
+          extractionTruncated: true,
+          extractionReviewedAt: true,
           created_at: true,
         },
       });
@@ -97,6 +101,8 @@ export class DocumentService {
         fileName: true,
         mimeType: true,
         extractionStatus: true,
+        extractionTruncated: true,
+        extractionReviewedAt: true,
         created_at: true,
         updated_at: true,
       },
@@ -107,17 +113,25 @@ export class DocumentService {
   async getDownloadInfo(id: string, ownerId: number) {
     const document = await this.prisma.document.findFirst({
       where: { id, ownerId, deleted_at: null },
-      select: { fileName: true, mimeType: true, path: true },
+      select: { fileName: true, mimeType: true, path: true, hash: true },
     });
     if (!document) {
       throw new NotFoundException('Document not found');
     }
+    let buffer: Buffer;
     try {
-      await fs.access(document.path);
+      buffer = await fs.readFile(document.path);
     } catch {
       throw new NotFoundException('Document file is not available');
     }
-    return document;
+    if (createHash('sha256').update(buffer).digest('hex') !== document.hash) {
+      throw new ConflictException('Stored document integrity check failed');
+    }
+    return {
+      fileName: document.fileName,
+      mimeType: document.mimeType,
+      buffer,
+    };
   }
 
   async getOwnedDocument(id: string, ownerId: number) {
@@ -215,6 +229,34 @@ export function detectFormat(
     return { extension, mimeType: DOCX_MIME };
   }
   if (
+    extension === '.xlsx' &&
+    bytes.length >= 4 &&
+    bytes[0] === 0x50 &&
+    bytes[1] === 0x4b &&
+    (suppliedMime === XLSX_MIME || suppliedMime === 'application/octet-stream')
+  ) {
+    return { extension, mimeType: XLSX_MIME };
+  }
+  if (
+    extension === '.csv' &&
+    [
+      'text/csv',
+      'text/plain',
+      'application/vnd.ms-excel',
+      'application/octet-stream',
+    ].includes(suppliedMime)
+  ) {
+    try {
+      const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+      if (text.includes('\u0000')) {
+        throw new Error('Binary data is not valid CSV text');
+      }
+    } catch {
+      throw new BadRequestException('CSV must be valid UTF-8 text');
+    }
+    return { extension, mimeType: 'text/csv' };
+  }
+  if (
     extension === '.png' &&
     bytes
       .subarray(0, 8)
@@ -243,6 +285,6 @@ export function detectFormat(
   }
 
   throw new BadRequestException(
-    'Supported files are PDF, DOCX, PNG, JPEG, TIFF, and EML',
+    'Supported files are PDF, DOCX, XLSX, CSV, PNG, JPEG, TIFF, and EML',
   );
 }

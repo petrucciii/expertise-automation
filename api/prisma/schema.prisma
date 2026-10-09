@@ -96,22 +96,24 @@ enum ExtractionSuggestionStatus {
 enum ExtractionSuggestionKind {
   FACT
   EVENT
+  IMAGE_DESCRIPTION
 }
 
 model User {
-  id            Int            @id @default(autoincrement())
-  email         String         @unique
-  passwordHash  String         @map("password_hash")
-  chats         Chat[]
-  documents     Document[]
-  cases         Case[]
-  caseArtifacts CaseArtifact[]
-  createdExtractionProposals CaseExtractionProposal[]
+  id                            Int                        @id @default(autoincrement())
+  email                         String                     @unique
+  passwordHash                  String                     @map("password_hash")
+  chats                         Chat[]
+  documents                     Document[]
+  cases                         Case[]
+  caseArtifacts                 CaseArtifact[]
+  createdExtractionProposals    CaseExtractionProposal[]
   reviewedExtractionSuggestions CaseExtractionSuggestion[] @relation("ReviewedSuggestions")
-  refreshTokens RefreshToken[]
-  created_at    DateTime       @default(now())
-  updated_at    DateTime       @updatedAt
-  deleted_at    DateTime?
+  reviewedDocuments             Document[]                 @relation("ExtractionReviewedDocuments")
+  refreshTokens                 RefreshToken[]
+  created_at                    DateTime                   @default(now())
+  updated_at                    DateTime                   @updatedAt
+  deleted_at                    DateTime?
 }
 
 model RefreshToken {
@@ -165,23 +167,29 @@ model Message {
 }
 
 model Document {
-  id             String          @id @default(uuid(7)) @db.Uuid
-  ownerId        Int
-  owner          User            @relation(fields: [ownerId], references: [id], onDelete: Restrict)
-  fileName       String
-  mimeType       String
-  path           String
-  hash           String
-  extractedText  String?         @db.Text @map("extracted_text")
-  extractedPages Json?           @db.JsonB @map("extracted_pages")
-  extractionStatus ExtractionStatus @default(PENDING) @map("extraction_status")
-  sourceMetadata Json?           @db.JsonB @map("source_metadata")
-  created_at     DateTime        @default(now())
-  updated_at     DateTime        @updatedAt
-  deleted_at     DateTime?
-  chatLinks      ChatDocument[]
-  messageSources MessageSource[]
-  caseLinks      CaseDocument[]
+  id                     String           @id @default(uuid(7)) @db.Uuid
+  ownerId                Int
+  owner                  User             @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  fileName               String
+  mimeType               String
+  path                   String
+  hash                   String
+  extractedText          String?          @map("extracted_text") @db.Text
+  extractedPages         Json?            @map("extracted_pages") @db.JsonB
+  extractionStatus       ExtractionStatus @default(PENDING) @map("extraction_status")
+  extractionTruncated    Boolean          @default(false) @map("extraction_truncated")
+  extractionReviewedById Int?             @map("extraction_reviewed_by_id")
+  extractionReviewedBy   User?            @relation("ExtractionReviewedDocuments", fields: [extractionReviewedById], references: [id], onDelete: SetNull)
+  extractionReviewedAt   DateTime?        @map("extraction_reviewed_at")
+  sourceMetadata         Json?            @map("source_metadata") @db.JsonB
+  created_at             DateTime         @default(now())
+  updated_at             DateTime         @updatedAt
+  deleted_at             DateTime?
+  chatLinks              ChatDocument[]
+  messageSources         MessageSource[]
+  caseLinks              CaseDocument[]
+
+  @@index([extractionReviewedById])
 }
 
 model ChatDocument {
@@ -196,71 +204,77 @@ model ChatDocument {
 }
 
 model MessageSource {
-  id         String   @id @default(cuid())
-  messageId  String   @db.Uuid
-  message    Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
-  documentId String   @db.Uuid
-  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  pageNumber Int?
-  excerpt    String?  @db.Text
+  id             String        @id @default(cuid())
+  messageId      String        @db.Uuid
+  message        Message       @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  documentId     String?       @db.Uuid
+  document       Document?     @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  caseDocumentId String?       @map("case_document_id") @db.Uuid
+  caseDocument   CaseDocument? @relation(fields: [caseDocumentId], references: [id], onDelete: Cascade)
+  pageNumber     Int?
+  excerpt        String?       @db.Text
 
   @@index([messageId])
   @@index([documentId])
+  @@index([caseDocumentId])
 }
 
 model Case {
-  id                   String          @id @default(uuid(7)) @db.Uuid
-  ownerId              Int             @map("owner_id")
-  owner                User            @relation(fields: [ownerId], references: [id], onDelete: Restrict)
-  title                String          @db.VarChar(200)
-  internalReference    String?         @map("internal_reference") @db.VarChar(120)
-  publicReference      String?         @map("public_reference") @db.VarChar(160)
-  caseFamily           CaseFamily      @default(CARGO_DAMAGE) @map("case_family")
-  status               CaseStatus      @default(INTAKE)
-  assignment           Json?           @db.JsonB
-  shipment             Json?           @db.JsonB
-  parties              Json?           @db.JsonB
-  damageAssessment     Json?           @map("damage_assessment") @db.JsonB
-  openQuestions        String[]        @default([]) @map("open_questions")
-  reportTemplateId     String          @default("cargo_damage_general_it_v1") @map("report_template_id")
-  clicheSetVersion     String?         @map("cliche_set_version")
-  nextDocumentNumber   Int             @default(1) @map("next_document_number")
-  revision             Int             @default(1)
-  documents            CaseDocument[]
-  events               CaseEvent[]
-  evidence             CaseEvidence[]
-  issues               CaseIssue[]
-  chats                Chat[]
-  artifacts            CaseArtifact[]
-  extractionProposals  CaseExtractionProposal[]
-  createdAt            DateTime        @default(now()) @map("created_at")
-  updatedAt            DateTime        @updatedAt @map("updated_at")
-  deletedAt            DateTime?       @map("deleted_at")
+  id                  String                   @id @default(uuid(7)) @db.Uuid
+  ownerId             Int                      @map("owner_id")
+  owner               User                     @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  title               String                   @db.VarChar(200)
+  internalReference   String?                  @map("internal_reference") @db.VarChar(120)
+  publicReference     String?                  @map("public_reference") @db.VarChar(160)
+  caseFamily          CaseFamily               @default(CARGO_DAMAGE) @map("case_family")
+  status              CaseStatus               @default(INTAKE)
+  assignment          Json?                    @db.JsonB
+  // Legacy fields are retained for database compatibility and are never accepted as case evidence.
+  shipment            Json?                    @db.JsonB
+  parties             Json?                    @db.JsonB
+  damageAssessment    Json?                    @map("damage_assessment") @db.JsonB
+  openQuestions       String[]                 @default([]) @map("open_questions")
+  reportTemplateId    String                   @default("cargo_damage_general_it_v1") @map("report_template_id")
+  clicheSetVersion    String?                  @map("cliche_set_version")
+  nextDocumentNumber  Int                      @default(1) @map("next_document_number")
+  revision            Int                      @default(1)
+  documents           CaseDocument[]
+  events              CaseEvent[]
+  evidence            CaseEvidence[]
+  issues              CaseIssue[]
+  chats               Chat[]
+  artifacts           CaseArtifact[]
+  extractionProposals CaseExtractionProposal[]
+  createdAt           DateTime                 @default(now()) @map("created_at")
+  updatedAt           DateTime                 @updatedAt @map("updated_at")
+  deletedAt           DateTime?                @map("deleted_at")
 
   @@index([ownerId, status, updatedAt])
   @@map("cases")
 }
 
 model CaseDocument {
-  id              String              @id @default(uuid(7)) @db.Uuid
-  caseId          String              @map("case_id") @db.Uuid
-  case            Case                @relation(fields: [caseId], references: [id], onDelete: Cascade)
-  documentId      String?             @map("document_id") @db.Uuid
-  document        Document?           @relation(fields: [documentId], references: [id], onDelete: SetNull)
-  sourceCode      String              @map("source_code") @db.VarChar(40)
-  displayName     String?             @map("display_name") @db.VarChar(240)
-  documentType    String?             @map("document_type") @db.VarChar(80)
-  verificationPurpose String?         @map("verification_purpose") @db.Text
-  documentDate    DateTime?           @map("document_date")
-  senderOrAuthor  String?             @map("sender_or_author") @db.VarChar(240)
-  availability    DocumentAvailability @default(ORIGINAL_ACCESSIBLE)
-  metadata        Json?               @db.JsonB
-  attachedAt      DateTime            @default(now()) @map("attached_at")
-  events          CaseEvent[]
-  evidence        CaseEvidence[]
-  eventSources    CaseEventSource[]
-  evidenceSources CaseEvidenceSource[]
+  id                  String                   @id @default(uuid(7)) @db.Uuid
+  caseId              String                   @map("case_id") @db.Uuid
+  case                Case                     @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  documentId          String?                  @map("document_id") @db.Uuid
+  document            Document?                @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  sourceCode          String                   @map("source_code") @db.VarChar(40)
+  displayName         String?                  @map("display_name") @db.VarChar(240)
+  documentType        String?                  @map("document_type") @db.VarChar(80)
+  verificationPurpose String?                  @map("verification_purpose") @db.Text
+  excerptText         String?                  @map("excerpt_text") @db.Text
+  documentDate        DateTime?                @map("document_date")
+  senderOrAuthor      String?                  @map("sender_or_author") @db.VarChar(240)
+  availability        DocumentAvailability     @default(ORIGINAL_ACCESSIBLE)
+  metadata            Json?                    @db.JsonB
+  attachedAt          DateTime                 @default(now()) @map("attached_at")
+  events              CaseEvent[]
+  evidence            CaseEvidence[]
+  eventSources        CaseEventSource[]
+  evidenceSources     CaseEvidenceSource[]
   extractionProposals CaseExtractionProposal[]
+  messageSources      MessageSource[]
 
   @@unique([caseId, documentId])
   @@unique([caseId, sourceCode])
@@ -269,21 +283,21 @@ model CaseDocument {
 }
 
 model CaseEvent {
-  id                String          @id @default(uuid(7)) @db.Uuid
-  caseId            String          @map("case_id") @db.Uuid
-  case              Case            @relation(fields: [caseId], references: [id], onDelete: Cascade)
-  event             String          @db.Text
-  date              DateTime?
-  dateType          EventDateType   @default(UNKNOWN) @map("date_type")
-  epistemicStatus   EvidenceStatus  @map("epistemic_status")
-  caseDocumentId    String?         @map("case_document_id") @db.Uuid
-  source            CaseDocument?   @relation(fields: [caseDocumentId], references: [id], onDelete: Restrict)
-  pageNumber        Int?            @map("page_number")
-  excerpt           String?         @db.Text
-  sourceLinks       CaseEventSource[]
+  id                   String                    @id @default(uuid(7)) @db.Uuid
+  caseId               String                    @map("case_id") @db.Uuid
+  case                 Case                      @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  event                String                    @db.Text
+  date                 DateTime?
+  dateType             EventDateType             @default(UNKNOWN) @map("date_type")
+  epistemicStatus      EvidenceStatus            @map("epistemic_status")
+  caseDocumentId       String?                   @map("case_document_id") @db.Uuid
+  source               CaseDocument?             @relation(fields: [caseDocumentId], references: [id], onDelete: Restrict)
+  pageNumber           Int?                      @map("page_number")
+  excerpt              String?                   @db.Text
+  sourceLinks          CaseEventSource[]
   extractionSuggestion CaseExtractionSuggestion? @relation("EventSuggestion")
-  createdAt         DateTime        @default(now()) @map("created_at")
-  updatedAt         DateTime        @updatedAt @map("updated_at")
+  createdAt            DateTime                  @default(now()) @map("created_at")
+  updatedAt            DateTime                  @updatedAt @map("updated_at")
 
   @@index([caseId, date])
   @@index([caseDocumentId])
@@ -291,23 +305,24 @@ model CaseEvent {
 }
 
 model CaseEvidence {
-  id                String          @id @default(uuid(7)) @db.Uuid
-  caseId            String          @map("case_id") @db.Uuid
-  case              Case            @relation(fields: [caseId], references: [id], onDelete: Cascade)
-  fieldKey          String          @map("field_key") @db.VarChar(160)
-  value             Json            @db.JsonB
-  unit              String?         @db.VarChar(40)
-  comparisonGroup   String?         @map("comparison_group") @db.VarChar(160)
-  epistemicStatus   EvidenceStatus  @map("epistemic_status")
-  attribution       String?         @db.VarChar(240)
-  caseDocumentId    String?         @map("case_document_id") @db.Uuid
-  source            CaseDocument?   @relation(fields: [caseDocumentId], references: [id], onDelete: Restrict)
-  pageNumber        Int?            @map("page_number")
-  excerpt           String?         @db.Text
-  createdAt         DateTime        @default(now()) @map("created_at")
-  updatedAt         DateTime        @updatedAt @map("updated_at")
-  sourceLinks       CaseEvidenceSource[]
-  issueLinks        CaseIssueEvidence[]
+  id                   String                    @id @default(uuid(7)) @db.Uuid
+  caseId               String                    @map("case_id") @db.Uuid
+  case                 Case                      @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  fieldKey             String                    @map("field_key") @db.VarChar(160)
+  value                Json                      @db.JsonB
+  unit                 String?                   @db.VarChar(40)
+  comparisonGroup      String?                   @map("comparison_group") @db.VarChar(160)
+  epistemicStatus      EvidenceStatus            @map("epistemic_status")
+  calculationMetadata  Json?                     @map("calculation_metadata") @db.JsonB
+  attribution          String?                   @db.VarChar(240)
+  caseDocumentId       String?                   @map("case_document_id") @db.Uuid
+  source               CaseDocument?             @relation(fields: [caseDocumentId], references: [id], onDelete: Restrict)
+  pageNumber           Int?                      @map("page_number")
+  excerpt              String?                   @db.Text
+  createdAt            DateTime                  @default(now()) @map("created_at")
+  updatedAt            DateTime                  @updatedAt @map("updated_at")
+  sourceLinks          CaseEvidenceSource[]
+  issueLinks           CaseIssueEvidence[]
   extractionSuggestion CaseExtractionSuggestion? @relation("EvidenceSuggestion")
 
   @@index([caseId, fieldKey, comparisonGroup])
@@ -316,28 +331,28 @@ model CaseEvidence {
 }
 
 model CaseIssue {
-  id              String              @id @default(uuid(7)) @db.Uuid
-  caseId          String              @map("case_id") @db.Uuid
-  case            Case                @relation(fields: [caseId], references: [id], onDelete: Cascade)
-  ruleId          String?             @map("rule_id") @db.VarChar(120)
-  ruleVersion     String?             @map("rule_version") @db.VarChar(80)
-  status          ChecklistStatus
-  severity        String?             @db.VarChar(40)
-  title           String              @db.VarChar(240)
-  explanation     String              @db.Text
+  id             String              @id @default(uuid(7)) @db.Uuid
+  caseId         String              @map("case_id") @db.Uuid
+  case           Case                @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  ruleId         String?             @map("rule_id") @db.VarChar(120)
+  ruleVersion    String?             @map("rule_version") @db.VarChar(80)
+  status         ChecklistStatus
+  severity       String?             @db.VarChar(40)
+  title          String              @db.VarChar(240)
+  explanation    String              @db.Text
   suggestedCheck String?             @map("suggested_check") @db.Text
-  evidence        CaseIssueEvidence[]
-  createdAt       DateTime            @default(now()) @map("created_at")
-  updatedAt       DateTime            @updatedAt @map("updated_at")
+  evidence       CaseIssueEvidence[]
+  createdAt      DateTime            @default(now()) @map("created_at")
+  updatedAt      DateTime            @updatedAt @map("updated_at")
 
   @@index([caseId, status])
   @@map("case_issues")
 }
 
 model CaseIssueEvidence {
-  issueId    String      @map("issue_id") @db.Uuid
-  issue      CaseIssue   @relation(fields: [issueId], references: [id], onDelete: Cascade)
-  evidenceId String      @map("evidence_id") @db.Uuid
+  issueId    String       @map("issue_id") @db.Uuid
+  issue      CaseIssue    @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  evidenceId String       @map("evidence_id") @db.Uuid
   evidence   CaseEvidence @relation(fields: [evidenceId], references: [id], onDelete: Cascade)
 
   @@id([issueId, evidenceId])
@@ -346,12 +361,12 @@ model CaseIssueEvidence {
 }
 
 model CaseEventSource {
-  eventId         String       @map("event_id") @db.Uuid
-  event           CaseEvent    @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  caseDocumentId  String       @map("case_document_id") @db.Uuid
-  caseDocument    CaseDocument @relation(fields: [caseDocumentId], references: [id], onDelete: Restrict)
-  pageNumber      Int?         @map("page_number")
-  excerpt         String?      @db.Text
+  eventId        String       @map("event_id") @db.Uuid
+  event          CaseEvent    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  caseDocumentId String       @map("case_document_id") @db.Uuid
+  caseDocument   CaseDocument @relation(fields: [caseDocumentId], references: [id], onDelete: Restrict)
+  pageNumber     Int?         @map("page_number")
+  excerpt        String?      @db.Text
 
   @@id([eventId, caseDocumentId])
   @@index([caseDocumentId])
@@ -359,12 +374,12 @@ model CaseEventSource {
 }
 
 model CaseEvidenceSource {
-  evidenceId      String       @map("evidence_id") @db.Uuid
-  evidence        CaseEvidence @relation(fields: [evidenceId], references: [id], onDelete: Cascade)
-  caseDocumentId  String       @map("case_document_id") @db.Uuid
-  caseDocument    CaseDocument @relation(fields: [caseDocumentId], references: [id], onDelete: Restrict)
-  pageNumber      Int?         @map("page_number")
-  excerpt         String?      @db.Text
+  evidenceId     String       @map("evidence_id") @db.Uuid
+  evidence       CaseEvidence @relation(fields: [evidenceId], references: [id], onDelete: Cascade)
+  caseDocumentId String       @map("case_document_id") @db.Uuid
+  caseDocument   CaseDocument @relation(fields: [caseDocumentId], references: [id], onDelete: Restrict)
+  pageNumber     Int?         @map("page_number")
+  excerpt        String?      @db.Text
 
   @@id([evidenceId, caseDocumentId])
   @@index([caseDocumentId])
@@ -372,41 +387,41 @@ model CaseEvidenceSource {
 }
 
 model CaseArtifact {
-  id             String           @id @default(uuid(7)) @db.Uuid
-  caseId         String           @map("case_id") @db.Uuid
-  case           Case             @relation(fields: [caseId], references: [id], onDelete: Cascade)
-  createdById    Int              @map("created_by_id")
-  createdBy      User             @relation(fields: [createdById], references: [id], onDelete: Restrict)
-  type           CaseArtifactType
-  version        Int
-  caseRevision   Int              @map("case_revision")
-  status         ArtifactStatus   @default(DRAFT)
-  content        Json             @db.JsonB
-  model          String?          @db.VarChar(120)
-  promptVersion  String?          @map("prompt_version") @db.VarChar(80)
-  createdAt      DateTime         @default(now()) @map("created_at")
-  approvedAt     DateTime?        @map("approved_at")
+  id            String           @id @default(uuid(7)) @db.Uuid
+  caseId        String           @map("case_id") @db.Uuid
+  case          Case             @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  createdById   Int              @map("created_by_id")
+  createdBy     User             @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  type          CaseArtifactType
+  version       Int
+  caseRevision  Int              @map("case_revision")
+  status        ArtifactStatus   @default(DRAFT)
+  content       Json             @db.JsonB
+  model         String?          @db.VarChar(120)
+  promptVersion String?          @map("prompt_version") @db.VarChar(80)
+  createdAt     DateTime         @default(now()) @map("created_at")
+  approvedAt    DateTime?        @map("approved_at")
 
   @@unique([caseId, type, version])
   @@map("case_artifacts")
 }
 
 model CaseExtractionProposal {
-  id              String                    @id @default(uuid(7)) @db.Uuid
-  caseId          String                    @map("case_id") @db.Uuid
-  case            Case                      @relation(fields: [caseId], references: [id], onDelete: Cascade)
-  caseDocumentId  String                    @map("case_document_id") @db.Uuid
-  caseDocument    CaseDocument              @relation(fields: [caseDocumentId], references: [id], onDelete: Restrict)
-  createdById     Int                       @map("created_by_id")
-  createdBy       User                      @relation(fields: [createdById], references: [id], onDelete: Restrict)
-  documentType    String                    @map("document_type") @db.VarChar(80)
-  model           String                    @db.VarChar(120)
-  promptVersion   String                    @map("prompt_version") @db.VarChar(80)
-  status          ExtractionProposalStatus  @default(PENDING)
-  openQuestions   String[]                  @default([]) @map("open_questions")
-  suggestions     CaseExtractionSuggestion[]
-  createdAt       DateTime                  @default(now()) @map("created_at")
-  reviewedAt      DateTime?                 @map("reviewed_at")
+  id             String                     @id @default(uuid(7)) @db.Uuid
+  caseId         String                     @map("case_id") @db.Uuid
+  case           Case                       @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  caseDocumentId String                     @map("case_document_id") @db.Uuid
+  caseDocument   CaseDocument               @relation(fields: [caseDocumentId], references: [id], onDelete: Restrict)
+  createdById    Int                        @map("created_by_id")
+  createdBy      User                       @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  documentType   String                     @map("document_type") @db.VarChar(80)
+  model          String                     @db.VarChar(120)
+  promptVersion  String                     @map("prompt_version") @db.VarChar(80)
+  status         ExtractionProposalStatus   @default(PENDING)
+  openQuestions  String[]                   @default([]) @map("open_questions")
+  suggestions    CaseExtractionSuggestion[]
+  createdAt      DateTime                   @default(now()) @map("created_at")
+  reviewedAt     DateTime?                  @map("reviewed_at")
 
   @@index([caseId, createdAt])
   @@index([caseDocumentId])

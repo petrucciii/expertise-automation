@@ -20,6 +20,19 @@ describe('uploaded document validation', () => {
     expect(format).toEqual({ extension: '.pdf', mimeType: 'application/pdf' });
   });
 
+  it('accepts CSV as validated UTF-8 text', () => {
+    const format = detectFormat(
+      {
+        originalname: 'temperature.csv',
+        mimetype: 'text/csv',
+        buffer: Buffer.from('time;temperature\n10:00;4.2\n', 'utf8'),
+      },
+      'temperature.csv',
+    );
+
+    expect(format).toEqual({ extension: '.csv', mimeType: 'text/csv' });
+  });
+
   it('rejects a renamed HTML file instead of trusting its extension', () => {
     expect(() =>
       detectFormat(

@@ -5,8 +5,16 @@ describe('validateCitations', () => {
   const documents = [
     {
       id: 'doc-1',
+      documentId: 'doc-1',
+      caseDocumentId: null,
       sourceCode: 'DOC-001',
       fileName: 'survey.pdf',
+      sourceMetadata: null,
+      availability: 'ORIGINAL_ACCESSIBLE',
+      extractionStatus: 'EXTRACTED',
+      sourceTextType: 'EXTRACTED_DOCUMENT',
+      extractionTruncated: false,
+      contextTruncated: false,
       text: '',
       pages: [
         {
@@ -17,9 +25,32 @@ describe('validateCitations', () => {
     },
     {
       id: 'doc-2',
+      documentId: 'doc-2',
+      caseDocumentId: null,
       sourceCode: 'DOC-002',
       fileName: 'bill.docx',
+      sourceMetadata: null,
+      availability: 'ORIGINAL_ACCESSIBLE',
+      extractionStatus: 'EXTRACTED',
+      sourceTextType: 'EXTRACTED_DOCUMENT',
+      extractionTruncated: false,
+      contextTruncated: false,
       text: 'Gross weight: 24,500 kg',
+      pages: [],
+    },
+    {
+      id: 'case-doc-3',
+      documentId: null,
+      caseDocumentId: 'case-doc-3',
+      sourceCode: 'DOC-003',
+      fileName: 'Survey report excerpt',
+      sourceMetadata: null,
+      availability: 'EXCERPT_ONLY',
+      extractionStatus: null,
+      sourceTextType: 'REGISTERED_EXCERPT',
+      extractionTruncated: false,
+      contextTruncated: false,
+      text: 'The survey report records damaged cartons.',
       pages: [],
     },
   ];
@@ -28,22 +59,22 @@ describe('validateCitations', () => {
     const valid = validateCitations(
       [
         {
-          documentId: 'doc-1',
+          sourceId: 'doc-1',
           pageNumber: 2,
           excerpt: 'The tally recorded twenty four wrapped pallets.',
         },
         {
-          documentId: 'doc-1',
+          sourceId: 'doc-1',
           pageNumber: 1,
           excerpt: 'The tally recorded twenty four wrapped pallets.',
         },
         {
-          documentId: 'doc-2',
+          sourceId: 'doc-2',
           pageNumber: null,
           excerpt: 'Gross weight: 25,400 kg',
         },
         {
-          documentId: 'unknown',
+          sourceId: 'unknown',
           pageNumber: null,
           excerpt: 'Any fabricated citation.',
         },
@@ -54,6 +85,7 @@ describe('validateCitations', () => {
     expect(valid).toEqual([
       {
         documentId: 'doc-1',
+        caseDocumentId: null,
         pageNumber: 2,
         excerpt: 'The tally recorded twenty four wrapped pallets.',
       },
@@ -64,7 +96,7 @@ describe('validateCitations', () => {
     const valid = validateCitations(
       [
         {
-          documentId: 'doc-2',
+          sourceId: 'doc-2',
           pageNumber: null,
           excerpt: 'Gross   weight:\n24,500 kg',
         },
@@ -74,5 +106,27 @@ describe('validateCitations', () => {
 
     expect(valid).toHaveLength(1);
     expect(valid[0].pageNumber).toBeNull();
+  });
+
+  it('accepts registered excerpts and links citations to their case source', () => {
+    const valid = validateCitations(
+      [
+        {
+          sourceId: 'case-doc-3',
+          pageNumber: null,
+          excerpt: 'The survey report records damaged cartons.',
+        },
+      ],
+      documents,
+    );
+
+    expect(valid).toEqual([
+      {
+        documentId: null,
+        caseDocumentId: 'case-doc-3',
+        pageNumber: null,
+        excerpt: 'The survey report records damaged cartons.',
+      },
+    ]);
   });
 });

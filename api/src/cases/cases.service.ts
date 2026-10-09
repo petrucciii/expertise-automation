@@ -21,8 +21,11 @@ const DOCUMENT_SELECT = {
   id: true,
   fileName: true,
   mimeType: true,
+  hash: true,
   sourceMetadata: true,
   extractionStatus: true,
+  extractionTruncated: true,
+  extractionReviewedAt: true,
   created_at: true,
 } satisfies Prisma.DocumentSelect;
 
@@ -31,14 +34,6 @@ export class CasesService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(ownerId: number, dto: CreateCaseDto) {
-    const shipment = omitUndefined({
-      transportMode: dto.transportMode,
-      origin: dto.origin,
-      destination: dto.destination,
-      vesselOrVehicle: dto.vesselOrVehicle,
-      cargoDescription: dto.cargoDescription,
-    });
-
     return this.prisma.case.create({
       data: {
         ownerId,
@@ -46,13 +41,10 @@ export class CasesService {
         internalReference: dto.internalReference?.trim() || null,
         publicReference: dto.publicReference?.trim() || null,
         caseFamily: dto.caseFamily,
-        assignment: toJson({
-          client: dto.client,
-          requestedScope: dto.requestedScope ?? [],
-          limitations: dto.limitations ?? [],
-        }),
-        shipment: toJson(shipment),
-        parties: dto.parties ? toJson(dto.parties) : Prisma.JsonNull,
+        assignment: toJson(assignmentMetadata(dto.assignment)),
+        shipment: Prisma.JsonNull,
+        parties: Prisma.JsonNull,
+        damageAssessment: Prisma.JsonNull,
         openQuestions: dto.openQuestions ?? [],
       },
     });
@@ -118,7 +110,13 @@ export class CasesService {
       throw new NotFoundException('Case not found');
     }
 
-    return record;
+    return {
+      ...record,
+      assignment: assignmentMetadata(record.assignment),
+      shipment: null,
+      parties: null,
+      damageAssessment: null,
+    };
   }
 
   async update(caseId: string, ownerId: number, dto: UpdateCaseDto) {
@@ -148,12 +146,7 @@ export class CasesService {
         : {}),
       ...(dto.assignment === undefined
         ? {}
-        : { assignment: toJson(dto.assignment) }),
-      ...(dto.shipment === undefined ? {} : { shipment: toJson(dto.shipment) }),
-      ...(dto.parties === undefined ? {} : { parties: toJson(dto.parties) }),
-      ...(dto.damageAssessment === undefined
-        ? {}
-        : { damageAssessment: toJson(dto.damageAssessment) }),
+        : { assignment: toJson(assignmentMetadata(dto.assignment)) }),
       ...(dto.openQuestions === undefined
         ? {}
         : { openQuestions: dto.openQuestions }),
@@ -165,7 +158,17 @@ export class CasesService {
         : { clicheSetVersion: dto.clicheSetVersion }),
     };
 
-    return this.prisma.case.update({ where: { id: caseId }, data });
+    const updated = await this.prisma.case.update({
+      where: { id: caseId },
+      data,
+    });
+    return {
+      ...updated,
+      assignment: assignmentMetadata(updated.assignment),
+      shipment: null,
+      parties: null,
+      damageAssessment: null,
+    };
   }
 
   async attachDocument(
@@ -175,10 +178,29 @@ export class CasesService {
   ) {
     const current = await this.requireOwnedCase(caseId, ownerId);
     const availability = dto.availability ?? 'ORIGINAL_ACCESSIBLE';
+    const excerptText = dto.excerptText?.trim() || null;
 
     if (availability === 'ORIGINAL_ACCESSIBLE' && !dto.documentId) {
       throw new BadRequestException(
         'An accessible original must refer to an uploaded document',
+      );
+    }
+    if (availability === 'EXCERPT_ONLY' && !dto.documentId && !excerptText) {
+      throw new BadRequestException(
+        'An excerpt-only source must include an uploaded excerpt or excerpt text',
+      );
+    }
+    if (availability !== 'EXCERPT_ONLY' && excerptText) {
+      throw new BadRequestException(
+        'Excerpt text can only be attached to an excerpt-only source',
+      );
+    }
+    if (
+      ['REFERENCED_NOT_ACCESSIBLE', 'NOT_PROVIDED'].includes(availability) &&
+      dto.documentId
+    ) {
+      throw new BadRequestException(
+        'An unavailable source cannot refer to an uploaded document',
       );
     }
 
@@ -213,6 +235,7 @@ export class CasesService {
             displayName: dto.displayName?.trim() || null,
             documentType: dto.documentType?.trim() || null,
             verificationPurpose: dto.verificationPurpose?.trim() || null,
+            excerptText,
             documentDate: dto.documentDate ? new Date(dto.documentDate) : null,
             senderOrAuthor: dto.senderOrAuthor?.trim() || null,
             availability,
@@ -265,9 +288,21 @@ export class CasesService {
     caseId: string,
     ownerId: number,
     dto: CreateCaseEvidenceDto,
+    calculationMetadata?: Prisma.InputJsonObject,
   ) {
     await this.requireOwnedCase(caseId, ownerId);
     ensureJsonValue(dto.value);
+    if (
+      (dto.epistemicStatus === 'CALCULATED') !==
+      Boolean(calculationMetadata)
+    ) {
+      throw new BadRequestException(
+        'Calculated evidence must come from a deterministic backend calculation',
+      );
+    }
+    if (calculationMetadata) {
+      ensureJsonValue(calculationMetadata);
+    }
     const references = await this.resolveSources(
       caseId,
       dto.epistemicStatus,
@@ -283,6 +318,9 @@ export class CasesService {
           unit: dto.unit?.trim() || null,
           comparisonGroup: dto.comparisonGroup?.trim() || null,
           epistemicStatus: dto.epistemicStatus,
+          calculationMetadata: calculationMetadata
+            ? toJson(calculationMetadata)
+            : Prisma.DbNull,
           attribution: dto.attribution?.trim() || null,
           caseDocumentId: references[0]?.caseDocumentId ?? null,
           pageNumber: references[0]?.pageNumber ?? null,
@@ -396,8 +434,12 @@ export class CasesService {
       document: row.displayName ?? row.document?.fileName ?? null,
       documentType: row.documentType,
       verificationPurpose: row.verificationPurpose,
+      excerptText: row.excerptText,
       availability: row.availability,
       extractionStatus: row.document?.extractionStatus ?? null,
+      extractionTruncated: row.document?.extractionTruncated ?? false,
+      extractionReviewedAt: row.document?.extractionReviewedAt ?? null,
+      sha256: row.document?.hash ?? null,
       documentDate: row.documentDate,
       senderOrAuthor: row.senderOrAuthor,
       metadata: row.metadata,
@@ -452,10 +494,11 @@ export class CasesService {
 
     return sources.map((source) => {
       const row = byCode.get(source.sourceCode)!;
+      const availableText = row.document?.extractedText || row.excerptText;
       if (
         source.excerpt &&
-        row.document?.extractedText &&
-        !containsNormalized(row.document.extractedText, source.excerpt)
+        availableText &&
+        !containsNormalized(availableText, source.excerpt)
       ) {
         throw new BadRequestException(
           `The excerpt does not match the extracted text for ${source.sourceCode}`,
@@ -489,15 +532,33 @@ export class CasesService {
   }
 }
 
-function omitUndefined<T extends Record<string, unknown>>(value: T): T {
-  return Object.fromEntries(
-    Object.entries(value).filter(([, entry]) => entry !== undefined),
-  ) as T;
-}
-
 function toJson(value: unknown): Prisma.InputJsonValue {
   ensureJsonValue(value);
   return value as Prisma.InputJsonValue;
+}
+
+function assignmentMetadata(value: unknown): Record<string, unknown> {
+  const assignment = isRecord(value) ? value : {};
+  const client = assignment.client;
+  const requestedScope = assignment.requestedScope;
+  const limitations = assignment.limitations;
+  return {
+    client: typeof client === 'string' ? client : null,
+    requestedScope: Array.isArray(requestedScope)
+      ? requestedScope.filter(
+          (item): item is string => typeof item === 'string',
+        )
+      : [],
+    limitations: Array.isArray(limitations)
+      ? limitations.filter((item): item is string => typeof item === 'string')
+      : [],
+    sourceStatus: 'USER_ENTERED_SCOPE_NOT_CASE_EVIDENCE',
+    sourceRefs: [],
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function ensureJsonValue(value: unknown): void {

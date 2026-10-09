@@ -35,6 +35,7 @@ describe('GeminiGenerateContentService', () => {
         required: ['answer'],
         additionalProperties: false,
       },
+      images: [{ mimeType: 'image/jpeg', data: Buffer.from('image-bytes') }],
     });
 
     expect(result).toEqual({
@@ -52,7 +53,13 @@ describe('GeminiGenerateContentService', () => {
     }
     const request = JSON.parse(body) as {
       systemInstruction: { parts: Array<{ text: string }> };
-      contents: Array<{ role: string; parts: Array<{ text: string }> }>;
+      contents: Array<{
+        role: string;
+        parts: Array<{
+          text?: string;
+          inlineData?: { mimeType: string; data: string };
+        }>;
+      }>;
       generationConfig: {
         responseFormat: { text: { mimeType: string; schema: unknown } };
       };
@@ -63,8 +70,12 @@ describe('GeminiGenerateContentService', () => {
     expect(request.contents[0]?.parts[0]?.text).toBe(
       'Return a valid response.',
     );
+    expect(request.contents[0]?.parts[1]?.inlineData).toEqual({
+      mimeType: 'image/jpeg',
+      data: Buffer.from('image-bytes').toString('base64'),
+    });
     expect(request.generationConfig.responseFormat.text.mimeType).toBe(
-      'application/json',
+      'APPLICATION_JSON',
     );
   });
 

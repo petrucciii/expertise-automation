@@ -20,6 +20,7 @@ export class CaseReportService {
           fieldKey: item.fieldKey,
           text: phraseForEvidence(item),
           epistemicStatus: item.epistemicStatus,
+          calculationMetadata: item.calculationMetadata,
           attribution: item.attribution,
           sources,
         };
@@ -36,10 +37,7 @@ export class CaseReportService {
         date: event.date,
         dateType: event.dateType,
         epistemicStatus: event.epistemicStatus,
-        text: phraseForEvent(
-          event,
-          sources.map((source) => source.sourceCode),
-        ),
+        text: phraseForEvent(event, sources),
         sources,
       };
     });
@@ -152,29 +150,58 @@ function phraseForEvidence(item: {
   unit: string | null;
   epistemicStatus: string;
   attribution: string | null;
-  sourceLinks: Array<{ caseDocument: { sourceCode: string } }>;
+  sourceLinks: Array<{
+    caseDocument: { sourceCode: string };
+    pageNumber: number | null;
+  }>;
 }): string {
   const value = displayValue(item.value, item.unit);
-  const sourceCodes = unique(
-    item.sourceLinks.map((source) => source.caseDocument.sourceCode),
+  const references = formatSourceReferences(
+    item.sourceLinks.map((source) => ({
+      sourceCode: source.caseDocument.sourceCode,
+      pageNumber: source.pageNumber,
+    })),
   );
-  const references = sourceCodes.length
-    ? sourceCodes.join(', ')
-    : 'fonte non indicata';
+  const safeReferences = references || 'fonte non indicata';
 
   switch (item.epistemicStatus) {
     case 'OBSERVED':
-      return `La documentazione ${references} registra un rilievo del perito: ${value}.`;
+      return (
+        'La pratica registra un rilievo del perito: ' +
+        value +
+        ' (' +
+        safeReferences +
+        ').'
+      );
     case 'REPORTED':
-      return `${item.attribution ?? 'Una parte'} riferisce, secondo ${references}, che ${value}.`;
+      return (
+        (item.attribution ?? 'Una parte') +
+        ' riferisce, secondo ' +
+        safeReferences +
+        ', che ' +
+        value +
+        '.'
+      );
     case 'STATED_IN_DOCUMENT':
-      return `Il documento ${references} riporta: ${value}.`;
+      return 'Il documento ' + safeReferences + ' riporta: ' + value + '.';
     case 'CALCULATED':
-      return `La pratica registra il valore calcolato ${value}, con riferimento a ${references}; il sistema non ha ricalcolato il dato.`;
+      return (
+        'La pratica registra il valore calcolato ' +
+        value +
+        ', con riferimento a ' +
+        safeReferences +
+        '; il sistema non ha ricalcolato il dato.'
+      );
     case 'DISPUTED':
-      return `È registrata una contestazione relativa a ${value}, richiamata in ${references}.`;
+      return (
+        "E' registrata una contestazione relativa a " +
+        value +
+        ', richiamata in ' +
+        safeReferences +
+        '.'
+      );
     default:
-      return `${item.fieldKey}: dato non verificato.`;
+      return item.fieldKey + ': dato non verificato.';
   }
 }
 
@@ -185,28 +212,70 @@ function phraseForEvent(
     dateType: string;
     epistemicStatus: string;
   },
-  sourceCodes: string[],
+  sources: Array<{ sourceCode: string; pageNumber: number | null }>,
 ): string {
-  const references = sourceCodes.length
-    ? sourceCodes.join(', ')
-    : 'fonte non indicata';
+  const references = formatSourceReferences(sources) || 'fonte non indicata';
   const datePrefix = event.date
-    ? `${event.date.toISOString().slice(0, 10)}: `
+    ? event.date.toISOString().slice(0, 10) + ': '
     : '';
   switch (event.epistemicStatus) {
     case 'OBSERVED':
-      return `${datePrefix}La registrazione ${references} riporta un evento osservato: ${event.event}`;
+      return (
+        datePrefix +
+        'La pratica registra un evento osservato: ' +
+        event.event +
+        ' (' +
+        references +
+        ')'
+      );
     case 'REPORTED':
-      return `${datePrefix}La fonte ${references} riferisce che ${event.event}`;
+      return (
+        datePrefix + 'La fonte ' + references + ' riferisce che ' + event.event
+      );
     case 'STATED_IN_DOCUMENT':
-      return `${datePrefix}Il documento ${references} riporta che ${event.event}`;
+      return (
+        datePrefix +
+        'Il documento ' +
+        references +
+        ' riporta che ' +
+        event.event
+      );
     case 'CALCULATED':
-      return `${datePrefix}La cronologia registra come calcolato l'evento “${event.event}”, sulla base di ${references}`;
+      return (
+        datePrefix +
+        'La cronologia registra come calcolato l\'evento "' +
+        event.event +
+        '", sulla base di ' +
+        references
+      );
     case 'DISPUTED':
-      return `${datePrefix}L'evento “${event.event}” è registrato come contestato in ${references}`;
+      return (
+        datePrefix +
+        'L\'evento "' +
+        event.event +
+        '" e\' registrato come contestato in ' +
+        references
+      );
     default:
-      return `${datePrefix}La registrazione dell'evento “${event.event}” non è verificata.`;
+      return (
+        datePrefix +
+        'La registrazione dell\'evento "' +
+        event.event +
+        '" non e\' verificata.'
+      );
   }
+}
+
+function formatSourceReferences(
+  sources: Array<{ sourceCode: string; pageNumber: number | null }>,
+): string {
+  return unique(
+    sources.map((source) =>
+      source.pageNumber === null
+        ? source.sourceCode
+        : source.sourceCode + ', p. ' + source.pageNumber,
+    ),
+  ).join('; ');
 }
 
 function sourceCodesForEvidence(

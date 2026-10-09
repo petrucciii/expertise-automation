@@ -4,7 +4,6 @@ import {
   IsDateString,
   IsDefined,
   IsEnum,
-  IsIn,
   IsInt,
   IsNotEmpty,
   IsObject,
@@ -24,7 +23,22 @@ import {
   EventDateType,
 } from '../../generated/prisma/client.js';
 
-const TRANSPORT_MODES = ['SEA', 'AIR', 'ROAD', 'RAIL', 'MULTIMODAL', 'UNKNOWN'];
+export class AssignmentDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(254)
+  client?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  requestedScope?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  limitations?: string[];
+}
 
 export class CreateCaseDto {
   @IsString()
@@ -47,47 +61,10 @@ export class CreateCaseDto {
   caseFamily?: CaseFamily;
 
   @IsOptional()
-  @IsString()
-  @MaxLength(254)
-  client?: string;
-
-  @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  requestedScope?: string[];
-
-  @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  limitations?: string[];
-
-  @IsOptional()
-  @IsIn(TRANSPORT_MODES)
-  transportMode?: string;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(240)
-  origin?: string;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(240)
-  destination?: string;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(240)
-  vesselOrVehicle?: string;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(600)
-  cargoDescription?: string;
-
-  @IsOptional()
   @IsObject()
-  parties?: Record<string, unknown>;
+  @ValidateNested()
+  @Type(() => AssignmentDto)
+  assignment?: AssignmentDto;
 
   @IsOptional()
   @IsArray()
@@ -122,19 +99,9 @@ export class UpdateCaseDto {
 
   @IsOptional()
   @IsObject()
-  assignment?: Record<string, unknown>;
-
-  @IsOptional()
-  @IsObject()
-  shipment?: Record<string, unknown>;
-
-  @IsOptional()
-  @IsObject()
-  parties?: Record<string, unknown>;
-
-  @IsOptional()
-  @IsObject()
-  damageAssessment?: Record<string, unknown>;
+  @ValidateNested()
+  @Type(() => AssignmentDto)
+  assignment?: AssignmentDto;
 
   @IsOptional()
   @IsArray()
@@ -171,6 +138,11 @@ export class AttachCaseDocumentDto {
   @IsString()
   @MaxLength(1200)
   verificationPurpose?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(30000)
+  excerptText?: string;
 
   @IsOptional()
   @IsDateString()

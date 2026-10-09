@@ -11,11 +11,32 @@ import {
 import { CurrentUser } from '@nestjs/authentication';
 import type { AuthenticatedUser } from '../users/user.type.js';
 import { CaseExtractionService } from './case-extraction.service.js';
+import { CaseTabularAnalysisService } from './case-tabular-analysis.service.js';
+import { CalculateNumericColumnDto } from '../documents/dto/calculate-numeric-column.dto.js';
 import { AcceptExtractionDto } from './dto/extraction.dto.js';
 
 @Controller('cases/:caseId')
 export class CaseExtractionController {
-  constructor(private readonly extraction: CaseExtractionService) {}
+  constructor(
+    private readonly extraction: CaseExtractionService,
+    private readonly tabularAnalysis: CaseTabularAnalysisService,
+  ) {}
+
+  @Post('documents/:sourceCode/calculations')
+  @HttpCode(HttpStatus.CREATED)
+  calculateColumn(
+    @Param('caseId', ParseUUIDPipe) caseId: string,
+    @Param('sourceCode') sourceCode: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: CalculateNumericColumnDto,
+  ) {
+    return this.tabularAnalysis.calculateColumn(
+      caseId,
+      sourceCode,
+      user.id,
+      dto,
+    );
+  }
 
   @Post('documents/:sourceCode/extract')
   @HttpCode(HttpStatus.CREATED)

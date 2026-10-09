@@ -1,4 +1,10 @@
-import { IsBoolean, IsOptional, IsString, MaxLength } from 'class-validator';
+import {
+  IsBoolean,
+  IsObject,
+  IsOptional,
+  IsString,
+  MaxLength,
+} from 'class-validator';
 
 export class GenerateArtifactDto {
   @IsOptional()
@@ -9,4 +15,9 @@ export class GenerateArtifactDto {
   @IsString()
   @MaxLength(120)
   targetSection?: string;
+}
+
+export class SaveArtifactRevisionDto {
+  @IsObject()
+  content: Record<string, unknown>;
 }

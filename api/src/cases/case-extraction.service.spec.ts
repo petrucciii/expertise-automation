@@ -9,7 +9,10 @@ import type { GeminiGenerateContentService } from '../ai/gemini-generate-content
 import type { DocumentExtractService } from '../documents/document-extract.service.js';
 import type { PrismaService } from '../prisma/prisma.service.js';
 import type { CasesService } from './cases.service.js';
-import { parseExtractionResponse } from './case-extraction.service.js';
+import {
+  buildDocumentContext,
+  parseExtractionResponse,
+} from './case-extraction.service.js';
 import { CaseExtractionService } from './case-extraction.service.js';
 
 describe('parseExtractionResponse', () => {
@@ -17,6 +20,7 @@ describe('parseExtractionResponse', () => {
     const result = parseExtractionResponse(
       {
         documentType: 'warehouse_tally',
+        imageDescription: null,
         facts: [
           {
             fieldKey: 'shipment.pallet_count',
@@ -82,6 +86,27 @@ describe('parseExtractionResponse', () => {
     expect(result.openQuestions).toEqual([
       'Does the tally cover the whole shipment?',
     ]);
+  });
+
+  it('keeps an image description as a separate reviewable proposal item', () => {
+    const result = parseExtractionResponse(
+      {
+        documentType: 'photograph',
+        imageDescription: 'A torn carton is visible near the container door.',
+        facts: [],
+        events: [],
+        openQuestions: [],
+      },
+      [],
+      '',
+      true,
+    );
+
+    expect(result.imageDescription).toBe(
+      'A torn carton is visible near the container door.',
+    );
+    expect(result.facts).toEqual([]);
+    expect(result.events).toEqual([]);
   });
 
   it('writes selected suggestions as sourced facts only after explicit acceptance', async () => {
@@ -175,5 +200,109 @@ describe('parseExtractionResponse', () => {
         }),
       }),
     );
+  });
+
+  it('reviews an image description without creating a case fact or changing the case revision', async () => {
+    const suggestion = {
+      id: 'suggestion-image-1',
+      kind: ExtractionSuggestionKind.IMAGE_DESCRIPTION,
+      status: ExtractionSuggestionStatus.PENDING,
+      content: {
+        description: 'A torn carton is visible near the container door.',
+      },
+    };
+    const tx = {
+      caseExtractionSuggestion: {
+        findMany: vi.fn().mockResolvedValue([suggestion]),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        count: vi.fn().mockResolvedValue(0),
+      },
+      caseEvidence: { create: vi.fn() },
+      caseEvent: { create: vi.fn() },
+      caseExtractionProposal: {
+        update: vi
+          .fn()
+          .mockResolvedValue({ id: 'proposal-1', status: 'REVIEWED' }),
+      },
+      case: {
+        updateMany: vi.fn(),
+        update: vi.fn(),
+      },
+    };
+    const prisma = {
+      caseExtractionProposal: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'proposal-1',
+          status: 'PENDING',
+          caseDocumentId: 'case-document-1',
+          caseDocument: {
+            availability: 'ORIGINAL_ACCESSIBLE',
+            document: {
+              id: 'document-1',
+              deleted_at: null,
+              extractedText: 'Recognized text from the photo.',
+              extractedPages: null,
+            },
+          },
+        }),
+      },
+      $transaction: vi.fn(async (callback: (transaction: unknown) => unknown) =>
+        callback(tx),
+      ),
+    };
+    const cases = {
+      requireOwnedCase: vi.fn().mockResolvedValue({ id: 'case-1' }),
+    };
+    const service = new CaseExtractionService(
+      prisma as unknown as PrismaService,
+      cases as unknown as CasesService,
+      {} as DocumentExtractService,
+      {} as GeminiGenerateContentService,
+    );
+
+    await service.acceptSuggestions('case-1', 'proposal-1', 7, {
+      suggestionIds: ['suggestion-image-1'],
+    });
+
+    expect(tx.caseEvidence.create).not.toHaveBeenCalled();
+    expect(tx.caseEvent.create).not.toHaveBeenCalled();
+    expect(tx.case.updateMany).not.toHaveBeenCalled();
+    expect(tx.caseExtractionSuggestion.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: ExtractionSuggestionStatus.ACCEPTED,
+          reviewedById: 7,
+        }),
+      }),
+    );
+  });
+});
+
+describe('buildDocumentContext', () => {
+  it('marks shortened plain-text documents as partial context', () => {
+    const context = buildDocumentContext(
+      'DOC-001',
+      'source.txt',
+      null,
+      'x'.repeat(60_001),
+      [],
+    );
+
+    expect(context).toMatchObject({
+      contextTruncated: true,
+      text: 'x'.repeat(60_000),
+    });
+  });
+
+  it('marks shortened page lists as partial context', () => {
+    const context = buildDocumentContext('DOC-001', 'source.pdf', null, '', [
+      { pageNumber: 1, text: 'a'.repeat(40_000) },
+      { pageNumber: 2, text: 'b'.repeat(30_000) },
+    ]);
+
+    expect(context.contextTruncated).toBe(true);
+    expect(context.pages?.map((page) => page.text.length)).toEqual([
+      40_000, 20_000,
+    ]);
   });
 });

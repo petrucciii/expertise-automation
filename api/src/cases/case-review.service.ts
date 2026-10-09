@@ -67,9 +67,11 @@ export function findComparableConflicts(
     value: unknown;
     unit: string | null;
     comparisonGroup: string | null;
+    calculationMetadata?: unknown;
     sourceLinks: Array<{
       caseDocument: { sourceCode: string };
       pageNumber: number | null;
+      excerpt: string | null;
     }>;
   }>,
 ) {
@@ -98,9 +100,11 @@ export function findComparableConflicts(
       values: group.map((item) => ({
         evidenceId: item.id,
         value: item.value,
+        calculationMetadata: item.calculationMetadata ?? null,
         sources: item.sourceLinks.map((source) => ({
           sourceCode: source.caseDocument.sourceCode,
           pageNumber: source.pageNumber,
+          excerpt: source.excerpt,
         })),
       })),
     }));

@@ -14,7 +14,10 @@ import {
 import { CurrentUser } from '@nestjs/authentication';
 import { CaseArtifactType } from '../generated/prisma/client.js';
 import type { AuthenticatedUser } from '../users/user.type.js';
-import { GenerateArtifactDto } from './dto/artifact.dto.js';
+import {
+  GenerateArtifactDto,
+  SaveArtifactRevisionDto,
+} from './dto/artifact.dto.js';
 import { CaseArtifactsService } from './case-artifacts.service.js';
 import { CaseArtifactExportService } from './case-artifact-export.service.js';
 
@@ -60,6 +63,26 @@ export class CaseArtifactsController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.artifacts.getLatest(caseId, user.id, type);
+  }
+
+  @Get(':type/versions')
+  listVersions(
+    @Param('caseId', ParseUUIDPipe) caseId: string,
+    @Param('type', new ParseEnumPipe(CaseArtifactType)) type: CaseArtifactType,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.artifacts.listVersions(caseId, user.id, type);
+  }
+
+  @Post(':type/revisions')
+  @HttpCode(HttpStatus.CREATED)
+  saveManualRevision(
+    @Param('caseId', ParseUUIDPipe) caseId: string,
+    @Param('type', new ParseEnumPipe(CaseArtifactType)) type: CaseArtifactType,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: SaveArtifactRevisionDto,
+  ) {
+    return this.artifacts.saveManualRevision(caseId, user.id, type, dto);
   }
 
   @Get(':type/latest/export')

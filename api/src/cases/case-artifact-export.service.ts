@@ -103,6 +103,14 @@ async function createRegisterWorkbook(
     { header: 'Type', key: 'documentType', width: 22 },
     { header: 'Availability', key: 'availability', width: 30 },
     { header: 'Extraction status', key: 'extractionStatus', width: 22 },
+    { header: 'Extraction truncated', key: 'extractionTruncated', width: 22 },
+    {
+      header: 'Extraction reviewed at',
+      key: 'extractionReviewedAt',
+      width: 26,
+    },
+    { header: 'SHA-256', key: 'sha256', width: 66 },
+    { header: 'Registered excerpt', key: 'excerptText', width: 48 },
     {
       header: 'What this source can verify',
       key: 'verificationPurpose',
@@ -114,7 +122,6 @@ async function createRegisterWorkbook(
   ];
   sheet.getRow(1).font = { bold: true };
   sheet.views = [{ state: 'frozen', ySplit: 1 }];
-  sheet.autoFilter = { from: 'A1', to: 'I1' };
 
   const register =
     isRecord(content) && Array.isArray(content.documents)
@@ -130,12 +137,17 @@ async function createRegisterWorkbook(
       documentType: toCellText(entry.documentType),
       availability: toCellText(entry.availability),
       extractionStatus: toCellText(entry.extractionStatus),
+      extractionTruncated: toCellText(entry.extractionTruncated),
+      extractionReviewedAt: toCellText(entry.extractionReviewedAt),
+      sha256: toCellText(entry.sha256),
+      excerptText: toCellText(entry.excerptText),
       verificationPurpose: toCellText(entry.verificationPurpose),
       documentDate: toCellText(entry.documentDate),
       senderOrAuthor: toCellText(entry.senderOrAuthor),
       emailMetadata: toCellText(entry.emailMetadata),
     });
   }
+  sheet.autoFilter = { from: 'A1', to: `M${Math.max(1, sheet.rowCount)}` };
 
   return Buffer.from(await workbook.xlsx.writeBuffer());
 }
@@ -358,7 +370,7 @@ function toCellText(value: unknown): string {
     return '';
   }
   if (typeof value === 'string') {
-    return value;
+    return /^[\t\r\n ]*[=+\-@]/.test(value) ? `'${value}` : value;
   }
   if (value instanceof Date) {
     return value.toISOString();
