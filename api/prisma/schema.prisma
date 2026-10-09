@@ -394,7 +394,7 @@ model CaseArtifact {
   createdBy     User             @relation(fields: [createdById], references: [id], onDelete: Restrict)
   type          CaseArtifactType
   version       Int
-  caseRevision  Int              @map("case_revision")
+  caseRevision  Int              @default(1) @map("case_revision")
   status        ArtifactStatus   @default(DRAFT)
   content       Json             @db.JsonB
   model         String?          @db.VarChar(120)
