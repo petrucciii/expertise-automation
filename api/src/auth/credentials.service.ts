@@ -1,8 +1,4 @@
-import {
-  ConflictException,
-  Injectable,
-  OnModuleInit,
-} from '@nestjs/common';
+import { ConflictException, Injectable, OnModuleInit } from '@nestjs/common';
 import { PasswordHasher } from '@nestjs/authentication';
 import * as bcrypt from 'bcrypt';
 import { randomBytes } from 'node:crypto';
@@ -45,7 +41,10 @@ export class CredentialsService implements OnModuleInit {
     }
   }
 
-  async verify(email: string, password: string): Promise<AuthenticatedUser | null> {
+  async verify(
+    email: string,
+    password: string,
+  ): Promise<AuthenticatedUser | null> {
     const found = await this.users.findCredentials(email);
     const storedHash = found?.passwordHash;
     const isLegacyBcrypt = storedHash?.startsWith('$2') ?? false;

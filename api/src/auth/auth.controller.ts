@@ -9,10 +9,7 @@ import {
   Res,
   UnauthorizedException,
 } from '@nestjs/common';
-import {
-  CurrentUser,
-  Public,
-} from '@nestjs/authentication';
+import { CurrentUser, Public } from '@nestjs/authentication';
 import type { CookieOptions, Request, Response } from 'express';
 import { AuthService } from './auth.service.js';
 import { assertTrustedOrigin } from './auth-origin.js';
@@ -66,7 +63,10 @@ export class AuthController {
   @Public()
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
-  async refresh(@Req() request: Request, @Res({ passthrough: true }) response: Response) {
+  async refresh(
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+  ) {
     assertTrustedOrigin(request.headers.origin);
     const refreshToken = request.cookies?.[refreshCookieName()];
     if (!refreshToken) {
@@ -124,10 +124,10 @@ function refreshCookieName(): string {
 
 function refreshCookieOptions(maxAge?: number): CookieOptions {
   const isProduction = process.env.NODE_ENV === 'production';
-  const configuredSameSite = process.env.REFRESH_COOKIE_SAME_SITE?.toLowerCase();
-  const sameSite: CookieOptions['sameSite'] = configuredSameSite === 'none'
-    ? 'none'
-    : 'lax';
+  const configuredSameSite =
+    process.env.REFRESH_COOKIE_SAME_SITE?.toLowerCase();
+  const sameSite: CookieOptions['sameSite'] =
+    configuredSameSite === 'none' ? 'none' : 'lax';
 
   if (sameSite === 'none' && !isProduction) {
     throw new Error('SameSite=None requires HTTPS in this configuration');

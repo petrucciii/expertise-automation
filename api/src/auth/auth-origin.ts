@@ -1,8 +1,7 @@
 import { ForbiddenException } from '@nestjs/common';
 
 export function getAllowedWebOrigins(): string[] {
-  const configuredOrigins = process.env.FRONTEND_ORIGINS
-    ?.split(',')
+  const configuredOrigins = process.env.FRONTEND_ORIGINS?.split(',')
     .map((origin) => origin.trim())
     .filter(Boolean);
 

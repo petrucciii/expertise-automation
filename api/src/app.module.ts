@@ -6,6 +6,8 @@ import { PrismaModule } from './prisma/prisma.module.js';
 import { DocumentModule } from './documents/document.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { UsersModule } from './users/users.module.js';
+import { CasesModule } from './cases/cases.module.js';
+import { ChatModule } from './chats/chat.module.js';
 
 const jwtSecret = process.env.JWT_SECRET;
 if (!jwtSecret || Buffer.byteLength(jwtSecret, 'utf8') < 32) {
@@ -31,6 +33,8 @@ if (!jwtSecret || Buffer.byteLength(jwtSecret, 'utf8') < 32) {
     PrismaModule,
     UsersModule,
     AuthModule,
+    CasesModule,
+    ChatModule,
     DocumentModule,
   ],
   controllers: [AppController],

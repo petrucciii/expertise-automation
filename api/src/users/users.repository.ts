@@ -52,7 +52,10 @@ export class UsersRepository {
     };
   }
 
-  async create(email: string, passwordHash: string): Promise<AuthenticatedUser> {
+  async create(
+    email: string,
+    passwordHash: string,
+  ): Promise<AuthenticatedUser> {
     return this.prisma.user.create({
       data: { email: normalizeEmail(email), passwordHash },
       select: { id: true, email: true },

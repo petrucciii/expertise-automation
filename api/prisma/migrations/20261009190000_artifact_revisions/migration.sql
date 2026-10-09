@@ -1,0 +1,2 @@
+ALTER TABLE "cases" ADD COLUMN "revision" INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE "case_artifacts" ADD COLUMN "case_revision" INTEGER NOT NULL DEFAULT 1;
