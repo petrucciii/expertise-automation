@@ -18,14 +18,34 @@ enum MessageRole {
 }
 
 model User {
-  id         Int        @id @default(autoincrement())
-  email      String     @unique
-  password   String
-  chats      Chat[]
-  documents  Document[]
-  created_at DateTime   @default(now())
-  updated_at DateTime   @updatedAt
-  deleted_at DateTime?
+  id            Int            @id @default(autoincrement())
+  email         String         @unique
+  passwordHash  String         @map("password_hash")
+  chats         Chat[]
+  documents     Document[]
+  refreshTokens RefreshToken[]
+  created_at    DateTime       @default(now())
+  updated_at    DateTime       @updatedAt
+  deleted_at    DateTime?
+}
+
+model RefreshToken {
+  // The authentication package uses SHA-256(token) as this primary key.
+  id              String    @id
+  familyId        String    @map("family_id")
+  userId          Int       @map("user_id")
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt       DateTime  @default(now()) @map("created_at")
+  expiresAt       DateTime  @map("expires_at")
+  familyExpiresAt DateTime  @map("family_expires_at")
+  usedAt          DateTime? @map("used_at")
+  revoked         Boolean   @default(false)
+  claims          Json?
+
+  @@index([familyId], map: "refresh_tokens_family_id_idx")
+  @@index([userId], map: "refresh_tokens_user_id_idx")
+  @@index([familyExpiresAt], map: "refresh_tokens_family_expires_at_idx")
+  @@map("refresh_tokens")
 }
 
 model Chat {

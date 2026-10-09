@@ -1,8 +1,8 @@
 import { PrismaClient } from '../src/generated/prisma/client.js';
 import { PrismaPg } from '@prisma/adapter-pg';
+import { PasswordHasher } from '@nestjs/authentication';
 import * as dotenv from 'dotenv';
 import * as path from 'path';
-import * as bcrypt from 'bcrypt';
 
 // Load .env file located outside /api
 dotenv.config({ path: path.resolve(process.cwd(), '../.env') });
@@ -12,15 +12,20 @@ const prisma = new PrismaClient({ adapter });
 
 async function main() {
     console.log('Seeding database...');
-    const hashedPassword = await bcrypt.hash('Password', 10);
+    const email = (process.env.SEED_ADMIN_EMAIL ?? 'admin@example.com').trim().toLowerCase();
+    const password = process.env.SEED_ADMIN_PASSWORD;
+    if (!password || password.length < 12) {
+        throw new Error('Set SEED_ADMIN_PASSWORD to a value of at least 12 characters before seeding');
+    }
+    const passwordHash = await new PasswordHasher().hash(password);
 
-    // Insert default user if not exists
+    // Do not reset an existing account's password every time the seed runs.
     const user = await prisma.user.upsert({
-        where: { email: 'admin@example.com' },
+        where: { email },
         update: {},
         create: {
-            email: 'admin@example.com',
-            password: hashedPassword,
+            email,
+            passwordHash,
         },
     });
 
