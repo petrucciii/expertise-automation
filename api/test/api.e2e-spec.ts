@@ -2131,6 +2131,8 @@ describe('API with real PostgreSQL and the production Nest application', () => {
       'get',
       `/chats/${chat.body.chatId}?offset=50`,
     ).expect(200);
+    expect(first.body._count.messages).toBe(62);
+    expect(second.body._count.messages).toBe(62);
     expect(first.body.messages).toHaveLength(50);
     expect(second.body.messages).toHaveLength(12);
     expect(
@@ -2142,6 +2144,41 @@ describe('API with real PostgreSQL and the production Nest application', () => {
     ).toBe(62);
     await api('get', `/chats/${chat.body.chatId}?limit=101`).expect(400);
   });
+
+  it.each(['PRELIMINARY_REVIEW', 'SURVEY_REPORT_DRAFT'])(
+    'rejects outdated and racing manual edits of %s using the opened artifact ID',
+    async (type) => {
+      const record = await newCase();
+      const artifact = (
+        await api('post', `/cases/${record.id}/artifacts/${type}/generate`)
+          .send({})
+          .expect(201)
+      ).body as { id: string; content: Record<string, unknown> };
+      const payload = {
+        content: artifact.content,
+        expectedArtifactId: artifact.id,
+      };
+      const raced = await Promise.all([
+        api('post', `/cases/${record.id}/artifacts/${type}/revisions`).send(
+          payload,
+        ),
+        api('post', `/cases/${record.id}/artifacts/${type}/revisions`).send(
+          payload,
+        ),
+      ]);
+      expect(
+        raced
+          .map((response) => response.status)
+          .sort((left, right) => left - right),
+      ).toEqual([201, 409]);
+      await api('post', `/cases/${record.id}/artifacts/${type}/revisions`)
+        .send(payload)
+        .expect(409);
+      expect(
+        await prisma.caseArtifact.count({ where: { caseId: record.id } }),
+      ).toBe(2);
+    },
+  );
 });
 
 function binaryParser(

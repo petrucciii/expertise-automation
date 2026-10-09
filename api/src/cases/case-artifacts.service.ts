@@ -252,7 +252,7 @@ export class CaseArtifactsService {
     const latest = await this.prisma.caseArtifact.findFirst({
       where: { caseId, type },
       orderBy: { version: 'desc' },
-      select: { caseRevision: true },
+      select: { id: true, caseRevision: true },
     });
     if (!latest) {
       throw new NotFoundException('Generated artifact not found');
@@ -260,6 +260,11 @@ export class CaseArtifactsService {
     if (latest.caseRevision !== current.revision) {
       throw new ConflictException(
         'Artifact is out of date. Generate a new version before editing it.',
+      );
+    }
+    if (dto.expectedArtifactId && latest.id !== dto.expectedArtifactId) {
+      throw new ConflictException(
+        'Artifact changed since the editor was opened. Reload it and retry.',
       );
     }
 
@@ -277,6 +282,7 @@ export class CaseArtifactsService {
       content,
       null,
       'manual-edit-1.0',
+      latest.id,
     );
 
     return revision;
@@ -357,7 +363,7 @@ export class CaseArtifactsService {
         });
         if ((base?.id ?? null) !== basedOnArtifactId)
           throw new ConflictException(
-            'Report section changed during generation. Reload it and retry.',
+            'Artifact changed during this operation. Reload it and retry.',
           );
       }
       return this.createVersion(

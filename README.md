@@ -1,8 +1,10 @@
 # Expertise Automation
 
-Backend for a cargo and transport surveyor workflow. It manages cases, source-tracked evidence, document registers, extraction proposals, scoped AI assistance, and versioned report artifacts with explicit human review.
+Cargo and transport surveyor workspace with a Nest backend and React/Vite frontend. It manages cases, source-tracked evidence, document registers, extraction proposals, scoped AI assistance, and versioned report artifacts with explicit human review.
 
 Start with [the API guide](api/README.md) for installation, authentication, document workflows, output formats, and verification commands.
+
+Then follow [the frontend guide](web/README.md) to start the ChatGPT-style workspace. The [complete visual and textual workflow](docs/app-flow.md) explains every feature and is also available inside the app.
 
 The [code and security audit](api/docs/audit-2026-10-09.md) records the requirements checked, fixes, the complete route test inventory, sector document examples, live-provider results, and remaining implementation limits.
 

@@ -179,6 +179,7 @@ export class ChatService {
     const chat = await this.prisma.chat.findFirst({
       where: { id: chatId, userId: ownerId, deleted_at: null },
       include: {
+        _count: { select: { messages: { where: { deleted_at: null } } } },
         messages: {
           where: { deleted_at: null },
           orderBy: [{ created_at: 'asc' }, { id: 'asc' }],
