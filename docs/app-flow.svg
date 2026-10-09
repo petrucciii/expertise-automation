@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="1010" viewBox="0 0 1120 1010" role="img" aria-labelledby="title desc">
+  <title id="title">Expertise: dalle fonti ai quattro risultati</title>
+  <desc id="desc">Accesso e pratica, fonti e lettura, revisione umana delle proposte, evidenze cronologia calcoli checklist e chat, quattro risultati versionati, approvazione ed esportazione. Una modifica della pratica richiede nuovi risultati.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 8 4 0 8" fill="none" stroke="#737373" stroke-width="1.5"/></marker>
+    <style>
+      text { font-family: Arial, Helvetica, sans-serif; fill: #202020; }
+      .title { font-size: 30px; font-weight: 600; }
+      .subtitle { font-size: 15px; fill: #626262; }
+      .heading { font-size: 17px; font-weight: 600; }
+      .body { font-size: 14px; }
+      .muted { font-size: 13px; fill: #626262; }
+      .panel { fill: #ffffff; stroke: #dedede; stroke-width: 1.3; }
+      .gate { fill: #f4f7f5; stroke: #719080; stroke-width: 1.3; }
+      .line { fill: none; stroke: #737373; stroke-width: 1.5; marker-end: url(#arrow); }
+    </style>
+  </defs>
+  <rect width="1120" height="1010" rx="24" fill="#f7f7f7"/>
+  <text x="48" y="62" class="title">Dalle fonti alla relazione.</text>
+  <text x="48" y="90" class="subtitle">Un workspace per la pratica. Il perito controlla i passaggi e approva il testo.</text>
+  <rect x="48" y="124" width="492" height="85" rx="16" class="panel"/>
+  <text x="70" y="154" class="heading">Accesso e pratica</text>
+  <text x="70" y="180" class="body">Account · incarico · riferimenti · limiti · domande aperte</text>
+  <rect x="580" y="124" width="492" height="85" rx="16" class="panel"/>
+  <text x="602" y="154" class="heading">Registro delle fonti</text>
+  <text x="602" y="180" class="body">Originali · estratti · riferimenti non accessibili · mancanti</text>
+  <path d="M540 167H580" class="line"/>
+  <path d="M826 209V237" class="line"/>
+  <rect x="580" y="237" width="492" height="105" rx="16" class="panel"/>
+  <text x="602" y="267" class="heading">Lettura del contenuto</text>
+  <text x="602" y="294" class="body">Testo · pagine PDF · tabelle · metadati email · OCR</text>
+  <text x="602" y="319" class="muted">Originale e hash conservati. Le formule non vengono eseguite.</text>
+  <rect x="48" y="237" width="492" height="105" rx="16" class="gate"/>
+  <text x="70" y="267" class="heading">Controllo del perito</text>
+  <text x="70" y="294" class="body">Confronta il testo con l'originale e conferma l'OCR.</text>
+  <text x="70" y="319" class="muted">Un testo troncato richiede un estratto più piccolo.</text>
+  <path d="M580 289H540" class="line"/>
+  <path d="M294 342V371" class="line"/>
+  <rect x="48" y="371" width="492" height="105" rx="16" class="panel"/>
+  <text x="70" y="401" class="heading">Proposte di estrazione</text>
+  <text x="70" y="428" class="body">Fatti · eventi · excerpt · pagine · attribuzione</text>
+  <text x="70" y="452" class="muted">Descrizioni delle immagini separate dai rilievi.</text>
+  <rect x="580" y="371" width="492" height="105" rx="16" class="gate"/>
+  <text x="602" y="401" class="heading">Accettazione o rifiuto</text>
+  <text x="602" y="428" class="body">Scegli i suggerimenti corretti e controlla le fonti.</text>
+  <text x="602" y="452" class="muted">L'AI non registra osservazioni dirette automaticamente.</text>
+  <path d="M540 423H580" class="line"/>
+  <path d="M826 476V504" class="line"/>
+  <rect x="48" y="504" width="1024" height="128" rx="16" class="panel"/>
+  <text x="70" y="535" class="heading">La pratica prende forma</text>
+  <text x="70" y="564" class="body">Evidenze con stato e fonti</text><text x="392" y="564" class="body">Cronologia attribuita</text><text x="714" y="564" class="body">Calcoli deterministici CSV / XLSX</text>
+  <text x="70" y="592" class="body">Checklist: 4 stati</text><text x="392" y="592" class="body">Confronti per gruppo e unità</text><text x="714" y="592" class="body">Chat con citazioni e sezioni</text>
+  <text x="70" y="615" class="muted">Puoi inserire dati manualmente, mantenendo origine e disponibilità della prova.</text>
+  <path d="M560 632V660" class="line"/>
+  <rect x="48" y="660" width="1024" height="149" rx="16" class="panel"/>
+  <text x="70" y="691" class="heading">Quattro risultati · versioni immutabili · revisione della pratica</text>
+  <path d="M48 709H1072" fill="none" stroke="#dedede"/>
+  <text x="70" y="742" class="heading">Scheda</text><text x="326" y="742" class="heading">Registro</text><text x="582" y="742" class="heading">Preliminare</text><text x="838" y="742" class="heading">Relazione</text>
+  <text x="70" y="769" class="body">JSON</text><text x="326" y="769" class="body">XLSX</text><text x="582" y="769" class="body">DOCX</text><text x="838" y="769" class="body">DOCX</text>
+  <text x="70" y="794" class="muted">Esportabile se aggiornato</text><text x="326" y="794" class="muted">Esportabile se aggiornato</text><text x="582" y="794" class="muted">Modifica → approva</text><text x="838" y="794" class="muted">Modifica → approva</text>
+  <path d="M820 809V837" class="line"/>
+  <rect x="580" y="837" width="492" height="89" rx="16" class="gate"/>
+  <text x="602" y="869" class="heading">Approvazione umana ed esportazione</text>
+  <text x="602" y="896" class="body">Soltanto l'ultima narrativa aggiornata può essere approvata.</text>
+  <rect x="48" y="837" width="492" height="89" rx="16" class="panel"/>
+  <text x="70" y="869" class="heading">La pratica cambia?</text>
+  <text x="70" y="896" class="body">Rigenera i risultati, poi ripeti revisione e approvazione.</text>
+  <path d="M294 837V814" class="line"/>
+  <text x="48" y="970" class="subtitle">Le fonti sostengono le dichiarazioni. L'approvazione non sostituisce la verifica professionale.</text>
+</svg>
