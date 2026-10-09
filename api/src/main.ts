@@ -1,12 +1,14 @@
 import { NestFactory } from '@nestjs/core';
-import { AppModule } from './app.module.js';
 import { ValidationPipe } from '@nestjs/common';
 import * as dotenv from 'dotenv';
 import * as path from 'path';
+import cookieParser from 'cookie-parser';
+import { getAllowedWebOrigins } from './auth/auth-origin.js';
 
 dotenv.config({ path: path.resolve(process.cwd(), '../.env') });
 
-
+// Load AppModule after dotenv so AuthenticationModule receives the secret.
+const { AppModule } = await import('./app.module.js');
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -14,11 +16,13 @@ async function bootstrap() {
   // Global prefix
   app.setGlobalPrefix('api');
 
-  // Enable CORS
+  // Cookie credentials require an explicit origin allowlist.
   app.enableCors({
-    origin: '*', // TODO: Restrict in prod
+    origin: getAllowedWebOrigins(),
     credentials: true,
   });
+
+  app.use(cookieParser());
 
   // Global Validation Pipe
   app.useGlobalPipes(

@@ -1,5 +1,4 @@
 import {
-  Body,
   Controller,
   FileTypeValidator,
   MaxFileSizeValidator,
@@ -14,12 +13,13 @@ import {
   HttpStatus,
   HttpCode,
 } from '@nestjs/common';
+import { CurrentUser } from '@nestjs/authentication';
 import { DocumentService } from './document.service.js';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { UploadDocumentDto } from './dto/upload-document.dto.js';
 import { GetDocumentDto } from './dto/get-document.dto.js';
 import 'multer';
 import { DocumentExtractService } from './document-extract.service.js';
+import type { AuthenticatedUser } from '../users/user.type.js';
 
 @Controller('documents')
 export class DocumentController {
@@ -32,6 +32,7 @@ export class DocumentController {
   @Post('upload')
   @UseInterceptors(FileInterceptor('file'))
   async uploadDocument(
+    @CurrentUser() user: AuthenticatedUser,
     @UploadedFile(
       new ParseFilePipe({
         validators: [
@@ -46,34 +47,43 @@ export class DocumentController {
       }),
     )
     file: Express.Multer.File,
-    @Body() dto: UploadDocumentDto,
   ): Promise<Object> {
-    return this.documentService.uploadDocument(file, dto);
+    return this.documentService.uploadDocument(file, user.id);
   }
 
   //GET api/documents/c201f-019d/download
   @Get(':id/download')
-  async getDocumentByUuid(@Param() dto: GetDocumentDto): Promise<Object> {
-    return this.documentService.getDocumentByUuid(dto);
+  async getDocumentByUuid(
+    @Param() dto: GetDocumentDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<Object> {
+    return this.documentService.getDocumentByUuid(dto, user.id);
   }
 
   //GET api/documents/c201f-019d/content
   @Get(':id/content')
   async getDocumentContentByUuid(
     @Param() dto: GetDocumentDto,
+    @CurrentUser() user: AuthenticatedUser,
   ): Promise<Object> {
-    return this.documentExtractService.getText(dto);
+    return this.documentExtractService.getText(dto, user.id);
   }
 
   //GET api/documents?fileName=doc.pdf
   @Get()
-  async getDocuments(@Query() dto?: GetDocumentDto): Promise<Object> {
-    return this.documentService.getDocuments(dto);
+  async getDocuments(
+    @Query() dto: GetDocumentDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<Object> {
+    return this.documentService.getDocuments(user.id, dto);
   }
 
   //DELETE /api/documents/c201f-019d
   @Delete(':id')
-  async deleteDocument(@Param() dto: GetDocumentDto): Promise<Object> {
-    return this.documentService.deleteDocument(dto);
+  async deleteDocument(
+    @Param() dto: GetDocumentDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<Object> {
+    return this.documentService.deleteDocument(dto, user.id);
   }
 }

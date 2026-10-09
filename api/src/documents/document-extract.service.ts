@@ -15,20 +15,20 @@ export class DocumentExtractService {
     constructor(private readonly prismaService: PrismaService) { }
 
 
-     async getText(dto: GetDocumentDto): Promise<any> {
-        const documentObj = await this.prismaService.document.findUnique({
-            where: { id: dto.id, deleted_at: null }
-        });
-
-        if (!documentObj) {
-            throw new BadRequestException("Document not found!")
+     async getText(dto: GetDocumentDto, ownerId: number): Promise<ExtractedDocument> {
+        if (!dto.id) {
+            throw new BadRequestException('Document id is required');
         }
 
-        const file = await fs.readFile(documentObj.path)
+        const documentObj = await this.prismaService.document.findFirst({
+            where: { id: dto.id, ownerId, deleted_at: null }
+        });
 
         if (!documentObj) {
             throw new NotFoundException('Document not found');
         }
+
+        const file = await fs.readFile(documentObj.path)
 
         if (documentObj.mimeType === "application/pdf") {
             return await this.extractPDF(file);  //need to create

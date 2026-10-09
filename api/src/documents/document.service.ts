@@ -1,7 +1,5 @@
 import { ConflictException, Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
-import { DocumentExtractService } from './document-extract.service.js';
-import { UploadDocumentDto } from './dto/upload-document.dto.js';
 
 import * as fs from 'fs/promises';
 import * as path from 'path';
@@ -14,11 +12,11 @@ import { GetDocumentDto } from './dto/get-document.dto.js';
 export class DocumentService {
     constructor(private readonly prismaService: PrismaService) { }
     
-    async uploadDocument(file: Express.Multer.File, dto: UploadDocumentDto): Promise<Object> {
+    async uploadDocument(file: Express.Multer.File, ownerId: number): Promise<Object> {
 
         const hash = crypto.createHash('sha256').update(file.buffer).digest('hex'); // hash of the file
 
-        const existing = await this.prismaService.document.findFirst({ where: { hash, deleted_at: null } });
+        const existing = await this.prismaService.document.findFirst({ where: { hash, ownerId, deleted_at: null } });
         if (existing) {
             throw new ConflictException('Document already exists');
         }
@@ -32,7 +30,7 @@ export class DocumentService {
 
         const document = await this.prismaService.document.create({
             data: {
-                ownerId: dto.ownerId,
+                ownerId,
                 fileName: file.originalname,
                 mimeType: file.mimetype,
                 path: filePath,
@@ -41,29 +39,46 @@ export class DocumentService {
         });
 
         return {
-            success: true
+            id: document.id,
+            fileName: document.fileName,
+            mimeType: document.mimeType,
+            created_at: document.created_at,
         };
     }
 
     //get documents by parameters, if none get all
-    async getDocuments(dto?: GetDocumentDto): Promise<Object> {
-        const where: any = {};
+    async getDocuments(ownerId: number, dto?: GetDocumentDto): Promise<Object> {
+        const where: { ownerId: number; fileName?: string; deleted_at: null } = {
+            ownerId,
+            deleted_at: null,
+        };
         if (dto?.fileName) {
             where.fileName = dto?.fileName;
         }
         where.deleted_at = null;
 
-        let documents = await this.prismaService.document.findMany({
-            where
+        const documents = await this.prismaService.document.findMany({
+            where,
+            select: {
+                id: true,
+                fileName: true,
+                mimeType: true,
+                created_at: true,
+                updated_at: true,
+            },
         });
 
         return documents;
     }
 
     //get by uuid
-    async getDocumentByUuid(dto: GetDocumentDto): Promise<Object> {
-        const document = await this.prismaService.document.findUnique({
-            where: { id: dto.id, deleted_at: null }
+    async getDocumentByUuid(dto: GetDocumentDto, ownerId: number): Promise<Object> {
+        if (!dto.id) {
+            throw new BadRequestException('Document id is required');
+        }
+
+        const document = await this.prismaService.document.findFirst({
+            where: { id: dto.id, ownerId, deleted_at: null },
         });
 
         if (!document) {
@@ -72,19 +87,27 @@ export class DocumentService {
 
         //String buffered file
         const content = Buffer.from(await fs.readFile(document.path)).toString('base64');
-        Object.assign(document, { fileContent: content }); //Add buffer to response
-
-        return document;
+        return {
+            id: document.id,
+            fileName: document.fileName,
+            mimeType: document.mimeType,
+            created_at: document.created_at,
+            fileContent: content,
+        };
     }
 
     //soft delete
-    async deleteDocument(dto: GetDocumentDto): Promise<Object> {
-        const document = await this.prismaService.document.update({
-            where: { id: dto.id, deleted_at: null },
+    async deleteDocument(dto: GetDocumentDto, ownerId: number): Promise<Object> {
+        if (!dto.id) {
+            throw new BadRequestException('Document id is required');
+        }
+
+        const result = await this.prismaService.document.updateMany({
+            where: { id: dto.id, ownerId, deleted_at: null },
             data: { deleted_at: new Date() }
         });
 
-        if (!document) {
+        if (result.count === 0) {
             throw new NotFoundException('Document not found');
         }
 
