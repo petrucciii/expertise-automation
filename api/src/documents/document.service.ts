@@ -12,9 +12,8 @@ import { GetDocumentDto } from './dto/get-document.dto.js';
 
 @Injectable()
 export class DocumentService {
-    constructor(private readonly prismaService: PrismaService, private readonly documentExtract: DocumentExtractService) { }
-
-
+    constructor(private readonly prismaService: PrismaService) { }
+    
     async uploadDocument(file: Express.Multer.File, dto: UploadDocumentDto): Promise<Object> {
 
         const hash = crypto.createHash('sha256').update(file.buffer).digest('hex'); // hash of the file
@@ -95,27 +94,4 @@ export class DocumentService {
         };
     }
 
-    async getText(dto: GetDocumentDto): Promise<any> {
-        const documentObj = await this.prismaService.document.findUnique({
-            where: { id: dto.id, deleted_at: null }
-        });
-
-        if (!documentObj) {
-            throw new BadRequestException("Document not found!")
-        }
-
-        const file = await fs.readFile(documentObj.path)
-
-        if (!documentObj) {
-            throw new NotFoundException('Document not found');
-        }
-
-        if (documentObj.mimeType === "application/pdf") {
-            return await this.documentExtract.extractPDF(file);  //need to create
-        } else if (documentObj.mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
-            return await this.documentExtract.extractDocx(file);
-        } else {
-            throw new BadRequestException("Invalid file type");
-        }
-    }
 }

@@ -1,7 +1,10 @@
-import { BadRequestException, Injectable } from "@nestjs/common";
+import { BadRequestException, NotFoundException, Injectable } from "@nestjs/common";
+import { GetDocumentDto  } from "./dto/get-document.dto.js";
+import { PrismaService } from '../prisma/prisma.service.js'
 import { PDFParse } from "pdf-parse";
 import { createWorker } from "tesseract.js";
 import mammoth from "mammoth";
+import fs from 'fs/promises'
 
 type ExtractedDocument = {
     content: string;
@@ -9,10 +12,38 @@ type ExtractedDocument = {
 
 @Injectable()
 export class DocumentExtractService {
+    constructor(private readonly prismaService: PrismaService) { }
+
+
+     async getText(dto: GetDocumentDto): Promise<any> {
+        const documentObj = await this.prismaService.document.findUnique({
+            where: { id: dto.id, deleted_at: null }
+        });
+
+        if (!documentObj) {
+            throw new BadRequestException("Document not found!")
+        }
+
+        const file = await fs.readFile(documentObj.path)
+
+        if (!documentObj) {
+            throw new NotFoundException('Document not found');
+        }
+
+        if (documentObj.mimeType === "application/pdf") {
+            return await this.extractPDF(file);  //need to create
+        } else if (documentObj.mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
+            return await this.extractDocx(file);
+        } else {
+            throw new BadRequestException("Invalid file type");
+        }
+    }
+
+
     async extractPDF(file: Buffer): Promise<ExtractedDocument> {
         this.validateFile(file);
 
-        // Copia il buffer per lasciare intatto quello ricevuto dal servizio.
+        // Copies buffer so that the one passed by the service remains intact
         const parser = new PDFParse({ data: Uint8Array.from(file) });
 
         try {
@@ -21,9 +52,10 @@ export class DocumentExtractService {
             try {
                 text = (await parser.getText()).text;
             } catch {
-                throw new BadRequestException("PDF non valido o illeggibile");
+                throw new BadRequestException("PDF not valid or unreadable");
             }
 
+            //fallback
             if (text.trim().length < 50) {
                 return {
                     content: await this.extractPDFWithOCR(parser),
@@ -43,15 +75,16 @@ export class DocumentExtractService {
             const result = await mammoth.extractRawText({ buffer: file });
             return { content: result.value };
         } catch {
-            throw new BadRequestException("DOCX non valido o illeggibile");
+            throw new BadRequestException("DOCX Not Valid or Unreadable");
         }
     }
 
+    //Fallback with OCR
     private async extractPDFWithOCR(parser: PDFParse): Promise<string> {
         const info = await parser.getInfo({ parsePageInfo: true });
 
         if (info.total === 0) {
-            throw new BadRequestException("Il PDF non contiene pagine");
+            throw new BadRequestException("PDF does not contain pages");
         }
 
         const worker = await createWorker(["ita", "eng"]);
@@ -59,6 +92,7 @@ export class DocumentExtractService {
         try {
             const pageTexts: string[] = [];
 
+            //For each page extract image
             for (let pageNumber = 1; pageNumber <= info.total; pageNumber++) {
                 const rendered = await parser.getScreenshot({
                     partial: [pageNumber],
@@ -77,6 +111,7 @@ export class DocumentExtractService {
                     ? image
                     : Buffer.from(image);
 
+                //OCR
                 const result = await worker.recognize(imageBuffer);
                 const pageText = result.data.text.trim();
 
@@ -93,7 +128,7 @@ export class DocumentExtractService {
 
     private validateFile(file: Buffer): void {
         if (!Buffer.isBuffer(file) || file.length === 0) {
-            throw new BadRequestException("File vuoto o non valido");
+            throw new BadRequestException("File not valid");
         }
     }
 }
