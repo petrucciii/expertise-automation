@@ -22,6 +22,8 @@
     "test:e2e": "vitest run --config ./vitest.config.e2e.ts",
     "test:ocr": "tsx test/ocr.integration.ts",
     "test:live": "node .smoke/test/gemini.integration.js",
+    "test:browser-server": "node .smoke/test/browser-server.js",
+    "pretest:browser-server": "npm run build && tsc -p tsconfig.smoke.json",
     "pretest:live": "npm run build && tsc -p tsconfig.smoke.json",
     "typecheck": "tsc --noEmit",
     "format:check": "prettier --check \"src/**/*.{ts,mjs}\" \"test/**/*.{ts,js,html}\" \"*.ts\" \"*.json\" \"prisma/seed.ts\"",

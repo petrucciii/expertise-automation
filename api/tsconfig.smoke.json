@@ -6,6 +6,10 @@
     "incremental": false,
     "declaration": false
   },
-  "include": ["test/gemini.integration.ts", "test/fixtures/cargo-documents.ts"],
+  "include": [
+    "test/gemini.integration.ts",
+    "test/browser-server.ts",
+    "test/fixtures/cargo-documents.ts"
+  ],
   "exclude": ["node_modules", "src/generated"]
 }
