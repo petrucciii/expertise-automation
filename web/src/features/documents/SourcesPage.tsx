@@ -41,6 +41,8 @@ export default function SourcesPage() {
       await invalidate();
       setSuccess(true);
     },
+    // Parsing can persist OCR text requiring review even when no AI proposal can be created.
+    onError: invalidate,
   });
   const download = useMutation({
     mutationFn: (document: DocumentRecord) => api.downloadDocument(document),
@@ -104,6 +106,10 @@ export default function SourcesPage() {
           );
           const needsReview =
             source.document?.extractionStatus === 'NEEDS_REVIEW';
+          const original = source.availability === 'ORIGINAL_ACCESSIBLE';
+          const visionSupported = ['image/png', 'image/jpeg'].includes(
+            source.document?.mimeType || '',
+          );
           return (
             <article key={source.id} className="record-card">
               <div className="record-heading">
@@ -160,13 +166,15 @@ export default function SourcesPage() {
                 <p className="record-body">{source.verificationPurpose}</p>
               )}
               <div className="reader-actions">
-                {accessible ? (
+                {original ? (
                   <Button
                     variant="secondary"
                     busy={
                       extract.isPending && extract.variables?.id === source.id
                     }
-                    disabled={extract.isPending || needsReview}
+                    disabled={
+                      extract.isPending || (needsReview && !visionSupported)
+                    }
                     onClick={() => {
                       setSuccess(false);
                       extract.mutate(source);
@@ -177,10 +185,12 @@ export default function SourcesPage() {
                   </Button>
                 ) : (
                   <span className="muted small">
-                    L’originale non è disponibile per l’estrazione.
+                    {source.availability === 'EXCERPT_ONLY'
+                      ? 'Usa l’estratto in chat o registra i fatti manualmente.'
+                      : 'L’originale non è disponibile per l’estrazione.'}
                   </span>
                 )}
-                {needsReview && (
+                {needsReview && !visionSupported && (
                   <Button variant="ghost" onClick={() => setReader(source)}>
                     Controlla prima il testo
                   </Button>

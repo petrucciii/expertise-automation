@@ -131,12 +131,16 @@ function ProposalCard({
               setSelected(
                 proposal.suggestions
                   .filter((item) => item.status === 'PENDING')
+                  .slice(0, 100)
                   .map((item) => item.id),
               )
             }
             disabled={!editable}
           >
-            Seleziona tutti
+            {proposal.suggestions.filter((item) => item.status === 'PENDING')
+              .length > 100
+              ? 'Seleziona primi 100'
+              : 'Seleziona tutti'}
           </Button>
         )}
         {selected.length > 0 && (
@@ -156,7 +160,11 @@ function ProposalCard({
               type="checkbox"
               aria-label={`Seleziona ${suggestion.content.fieldKey || suggestion.content.event || 'descrizione immagine'}`}
               checked={selected.includes(suggestion.id)}
-              disabled={!editable || suggestion.status !== 'PENDING'}
+              disabled={
+                !editable ||
+                suggestion.status !== 'PENDING' ||
+                (!selected.includes(suggestion.id) && selected.length >= 100)
+              }
               onChange={(event) =>
                 setSelected(
                   event.target.checked
@@ -223,6 +231,12 @@ function ProposalCard({
         </div>
       )}
       <ErrorNotice error={accept.error} />
+      {pending && (
+        <p className="field-help">
+          Puoi accettare fino a 100 suggerimenti per volta. I restanti rimangono
+          da rivedere.
+        </p>
+      )}
       {pending && (
         <div className="proposal-footer">
           <span className="muted small">

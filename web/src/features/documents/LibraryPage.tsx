@@ -35,6 +35,8 @@ export default function LibraryPage() {
         cache.invalidateQueries({ queryKey: ['documents'] }),
         cache.invalidateQueries({ queryKey: ['case'] }),
         cache.invalidateQueries({ queryKey: ['artifacts'] }),
+        cache.invalidateQueries({ queryKey: ['latest'] }),
+        cache.invalidateQueries({ queryKey: ['versions'] }),
         cache.invalidateQueries({ queryKey: ['register'] }),
       ]);
       cache.removeQueries({ queryKey: ['content', removing?.id] });

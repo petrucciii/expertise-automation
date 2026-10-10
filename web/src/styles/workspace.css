@@ -239,6 +239,8 @@
   margin-bottom: 9px;
 }
 .chat-page {
+  /* Loading an older page must not anchor the viewport to the latest reply or composer. */
+  overflow-anchor: none;
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -552,6 +554,35 @@
 .version-row small {
   display: block;
   color: var(--muted);
+}
+.source-fieldset {
+  min-width: 0;
+  margin: 18px 0;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.source-fieldset legend {
+  padding: 0 6px;
+  font-size: 13px;
+  font-weight: 500;
+}
+.content-tree {
+  margin: 16px 0;
+  padding-left: 16px;
+  border-left: 1px solid var(--border);
+  overflow-wrap: anywhere;
+}
+.content-tree dt {
+  margin: 14px 0 5px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.content-tree dd {
+  margin: 0;
+}
+.content-tree ul {
+  padding-left: 20px;
 }
 .guide-page {
   max-width: 950px;

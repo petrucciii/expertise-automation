@@ -36,6 +36,7 @@ export function useInvalidateCase(caseId: string) {
       cache.invalidateQueries({ queryKey: ['case', caseId] }),
       cache.invalidateQueries({ queryKey: ['cases'] }),
       cache.invalidateQueries({ queryKey: ['artifacts', caseId] }),
+      cache.invalidateQueries({ queryKey: ['latest', caseId] }),
       cache.invalidateQueries({ queryKey: ['versions', caseId] }),
       cache.invalidateQueries({ queryKey: ['register', caseId] }),
       cache.invalidateQueries({ queryKey: ['proposals', caseId] }),

@@ -1,0 +1,60 @@
+import type { Artifact, CaseRecord, CaseSource } from '../lib/types';
+
+export const caseRecord: CaseRecord = {
+  id: '00000000-0000-4000-8000-000000000001',
+  title: 'Synthetic cargo survey',
+  internalReference: null,
+  publicReference: null,
+  caseFamily: 'CARGO_DAMAGE',
+  status: 'DRAFT',
+  createdAt: '2026-10-10T10:00:00Z',
+  updatedAt: '2026-10-10T10:00:00Z',
+  revision: 1,
+  assignment: null,
+  openQuestions: [],
+  documents: [],
+  evidence: [],
+  events: [],
+  issues: [],
+  reportTemplateId: 'cargo_damage_general_it_v1',
+  clicheSetVersion: '1.0',
+};
+export const preliminary: Artifact = {
+  id: '00000000-0000-4000-8000-000000000002',
+  caseId: caseRecord.id,
+  type: 'PRELIMINARY_REVIEW',
+  version: 1,
+  caseRevision: 1,
+  status: 'DRAFT',
+  isStale: false,
+  model: null,
+  promptVersion: 'artifact-composition-1.0',
+  createdAt: '2026-10-10T10:00:00Z',
+  approvedAt: null,
+  content: {
+    chronology: [{ event: 'Cargo received', sources: [] }],
+    computedChecks: { comparableValueDifferences: [], unavailableSources: [] },
+    surveyorChecklist: [],
+    openQuestions: ['Obtain original tally'],
+    limitations: ['Working review'],
+  },
+};
+export function source(values: Partial<CaseSource> = {}): CaseSource {
+  return {
+    id: '00000000-0000-4000-8000-000000000003',
+    caseId: caseRecord.id,
+    sourceCode: 'DOC-001',
+    documentId: null,
+    document: null,
+    displayName: 'Synthetic source',
+    documentType: 'survey_report',
+    availability: 'NOT_PROVIDED',
+    excerptText: null,
+    documentDate: null,
+    senderOrAuthor: null,
+    verificationPurpose: null,
+    metadata: {},
+    attachedAt: '2026-10-10T10:00:00Z',
+    ...values,
+  };
+}

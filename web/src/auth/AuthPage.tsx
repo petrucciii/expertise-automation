@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { ArrowRight, ShieldCheck } from 'lucide-react';
 import { useAuth } from './auth-context';
+import { ApiError } from '../lib/api-client';
 import { Button, ErrorNotice, Field, Loading } from '../components/ui';
 
 export function AuthPage() {
@@ -42,7 +43,11 @@ export function AuthPage() {
         ? auth.signUp(email.trim(), password)
         : auth.signIn(email.trim(), password));
     } catch (cause) {
-      setError(cause);
+      setError(
+        !register && cause instanceof ApiError && cause.status === 401
+          ? new Error('Email o password non valide.')
+          : cause,
+      );
     } finally {
       setBusy(false);
     }

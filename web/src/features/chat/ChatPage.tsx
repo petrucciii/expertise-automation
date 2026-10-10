@@ -32,6 +32,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { api } from '../../lib/api';
+import { ApiError } from '../../lib/api-client';
 import { reportSections } from '../../lib/artifact-content';
 import { sourceName } from '../../lib/labels';
 import type { CaseSource, ChatInput, Citation, Message } from '../../lib/types';
@@ -45,6 +46,10 @@ import {
 } from '../../components/ui';
 import { useCase } from '../cases/case-context';
 import { DocumentReader } from '../documents/DocumentReader';
+
+const messagePageSize = 50;
+const messageOffsetLimit = 100000;
+const messageHistoryLimit = messageOffsetLimit + messagePageSize;
 
 export default function ChatPage() {
   const record = useCase();
@@ -70,12 +75,18 @@ function Conversation({ chatId }: { chatId?: string }) {
   const input = useRef<HTMLTextAreaElement>(null);
   const bottom = useRef<HTMLDivElement>(null);
   const query = useInfiniteQuery({
-    queryKey: ['chat', chatId],
+    queryKey: ['chat', chatId, record.id],
     queryFn: async ({ pageParam }) => {
       const first = await api.chat(chatId!, pageParam || 0);
+      if (first.caseId !== record.id)
+        throw new ApiError(
+          404,
+          'Questa conversazione appartiene a un’altra pratica. Aprila dallo storico della pratica corretta.',
+        );
       const latestOffset = Math.min(
-        100000,
-        Math.floor(Math.max(0, first._count.messages - 1) / 50) * 50,
+        messageOffsetLimit,
+        Math.floor(Math.max(0, first._count.messages - 1) / messagePageSize) *
+          messagePageSize,
       );
       const offset = pageParam ?? latestOffset;
       return {
@@ -88,18 +99,18 @@ function Conversation({ chatId }: { chatId?: string }) {
     enabled: Boolean(chatId),
     initialPageParam: null as number | null,
     getPreviousPageParam: (first) =>
-      first.offset > 0 ? first.offset - 50 : undefined,
+      first.offset > 0 ? first.offset - messagePageSize : undefined,
     getNextPageParam: (last) =>
       last.offset + last.messages.length < last._count.messages &&
-      last.offset < 100000
-        ? last.offset + 50
+      last.offset < messageOffsetLimit
+        ? last.offset + messagePageSize
         : undefined,
     retry: false,
   });
   const chatSources = useQuery({
     queryKey: ['chat-sources', chatId],
     queryFn: () => api.chatDocuments(chatId!),
-    enabled: Boolean(chatId),
+    enabled: Boolean(chatId) && query.isSuccess,
     retry: false,
   });
   const artifacts = useQuery({
@@ -111,6 +122,9 @@ function Conversation({ chatId }: { chatId?: string }) {
   );
   const sections = report ? reportSections(report.content) : [];
   const messages = query.data?.pages.flatMap((page) => page.messages) || [];
+  // Reserve space for both messages so a new reply cannot fall outside the API's pageable history.
+  const historyLimitReached =
+    (query.data?.pages[0]?._count.messages || 0) > messageHistoryLimit - 2;
   const sources = chatSources.data || record.documents;
   const available = sources.filter((source) =>
     ['ORIGINAL_ACCESSIBLE', 'EXCERPT_ONLY'].includes(source.availability),
@@ -124,13 +138,12 @@ function Conversation({ chatId }: { chatId?: string }) {
       if (!chatId && result.chatId)
         await navigate(`/cases/${record.id}/chat/${result.chatId}`);
       else {
-        cache.removeQueries({ queryKey: ['chat', chatId] });
-        await query.refetch();
+        await cache.resetQueries({ queryKey: ['chat', chatId] });
       }
     },
     onError: async () => {
       await cache.invalidateQueries({ queryKey: ['chats', record.id] });
-      if (chatId) await cache.invalidateQueries({ queryKey: ['chat', chatId] });
+      if (chatId) await cache.resetQueries({ queryKey: ['chat', chatId] });
     },
   });
   useEffect(() => {
@@ -139,13 +152,20 @@ function Conversation({ chatId }: { chatId?: string }) {
       input.current.style.height = `${Math.min(input.current.scrollHeight, 220)}px`;
     }
   }, [message]);
+  const lastMessageId = messages.at(-1)?.id;
   useEffect(() => {
     bottom.current?.scrollIntoView({ block: 'end', behavior: 'instant' });
-  }, [messages.length, mutation.isPending]);
+  }, [lastMessageId, mutation.isPending]);
   function send(event?: FormEvent) {
     event?.preventDefault();
     setClientError(null);
-    if (!message.trim() || mutation.isPending) return;
+    if (
+      !message.trim() ||
+      mutation.isPending ||
+      historyLimitReached ||
+      (chatId && !query.isSuccess)
+    )
+      return;
     if (useSelected && !documentIds.length) {
       setClientError(
         new Error(
@@ -194,6 +214,16 @@ function Conversation({ chatId }: { chatId?: string }) {
             void query.refetch();
           }}
         />
+        {historyLimitReached && (
+          <Notice tone="warning">
+            Questa conversazione ha raggiunto il limite dello storico
+            consultabile.{' '}
+            <Link to={`/cases/${record.id}`} className="text-button">
+              Apri una nuova conversazione
+            </Link>{' '}
+            per continuare; lo storico rimane disponibile.
+          </Notice>
+        )}
         {query.hasPreviousPage && (
           <Button
             variant="secondary"
@@ -328,7 +358,11 @@ function Conversation({ chatId }: { chatId?: string }) {
             rows={2}
             maxLength={12000}
             placeholder="Scrivi sulla pratica…"
-            disabled={mutation.isPending || Boolean(chatId && query.isError)}
+            disabled={
+              mutation.isPending ||
+              historyLimitReached ||
+              Boolean(chatId && !query.isSuccess)
+            }
           />
           <div className="composer-footer">
             <div className="composer-tools">
@@ -356,7 +390,8 @@ function Conversation({ chatId }: { chatId?: string }) {
               disabled={
                 !message.trim() ||
                 mutation.isPending ||
-                Boolean(chatId && query.isError)
+                historyLimitReached ||
+                Boolean(chatId && !query.isSuccess)
               }
             >
               {mutation.isPending ? (
@@ -462,7 +497,7 @@ function Conversation({ chatId }: { chatId?: string }) {
           setCitation(null);
           setReader(null);
         }}
-        title={`Citazione · ${citation?.caseDocument?.sourceCode || 'fonte'}`}
+        title={`Citazione · ${citation?.caseDocument?.sourceCode || reader?.sourceCode || 'fonte'}`}
         description={
           citation?.pageNumber
             ? `Pagina ${citation.pageNumber}`
@@ -496,6 +531,7 @@ function ChatMessage({
   message: Message;
   onCitation: (citation: Citation) => void;
 }) {
+  const record = useCase();
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<unknown>(null);
   async function copy() {
@@ -555,6 +591,9 @@ function ChatMessage({
             >
               <FileText size={12} />
               {source.caseDocument?.sourceCode ||
+                record.documents.find(
+                  (document) => document.documentId === source.documentId,
+                )?.sourceCode ||
                 source.document?.fileName ||
                 `Fonte ${index + 1}`}
               {source.pageNumber && ` · p. ${source.pageNumber}`}

@@ -83,6 +83,8 @@ function ReaderContent({
         cache.invalidateQueries({ queryKey: ['documents'] }),
         cache.invalidateQueries({ queryKey: ['case'] }),
         cache.invalidateQueries({ queryKey: ['artifacts'] }),
+        cache.invalidateQueries({ queryKey: ['latest'] }),
+        cache.invalidateQueries({ queryKey: ['versions'] }),
         cache.invalidateQueries({ queryKey: ['register'] }),
       ]);
     },
@@ -91,6 +93,9 @@ function ReaderContent({
     if (query.dataUpdatedAt) {
       void cache.invalidateQueries({ queryKey: ['case'] });
       void cache.invalidateQueries({ queryKey: ['artifacts'] });
+      void cache.invalidateQueries({ queryKey: ['latest'] });
+      void cache.invalidateQueries({ queryKey: ['versions'] });
+      void cache.invalidateQueries({ queryKey: ['documents'] });
       void cache.invalidateQueries({ queryKey: ['register'] });
     }
   }, [cache, query.dataUpdatedAt]);
@@ -198,7 +203,7 @@ function ReaderContent({
           </div>
         </div>
       ) : (
-        !query.isPending &&
+        (!document || !query.isPending) &&
         !query.error && (
           <Notice>
             {document

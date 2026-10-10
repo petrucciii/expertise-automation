@@ -42,11 +42,18 @@ All files and exports use authenticated fetch and temporary blob URLs. AI respon
 
 ```bash
 npm run check
-npm run test:cov
 npm audit --audit-level=moderate
+npx playwright install chromium
+npm run test:e2e
 ```
 
-Build and type checking use strict TypeScript, including test code. Oxlint includes type-aware promise rules, React hooks and accessibility checks. Vitest/Testing Library verify transport, session concurrency, forms and hostile input handling. Browser verification is described in the final testing notes when the end-to-end suite is added. Test results and coverage have different scopes: unit coverage is not a claim that every visual state or possible document is tested.
+Build and type checking use strict TypeScript, including test code. Oxlint includes type-aware promise rules, React hooks and accessibility checks. Vitest/Testing Library verify transport, session concurrency, forms, OCR confirmation, selection limits and preservation of unsaved edits. Optional `npm run test:cov` measures that unit-test scope; it is not a measure of the complete browser workflow.
+
+The Playwright suite starts the real compiled Nest application, a disposable PostgreSQL database, private temporary file storage, and Vite on ports 3101/5174. Docker must be running, both API and web dependencies must be installed, and those ports must be free. It uses real authentication, cookies, DTOs, parsers, ledger operations, revisions, approvals and downloads. The external Gemini transport is synthetic. Browser fixtures also replace the in-memory rate counter so repeated accessibility scans and UI setup do not exhaust the shared test-server quota; the backend HTTP suite tests real throttling separately. The suite never uses your configured database, real accounts, document storage or Gemini key.
+
+Browser scenarios cover all eight practice screens, the library, registration, case editing, upload/duplicates, original text/download, proposal acceptance/rejection, manual evidence, table calculations, chronology, checklist editing, all four exports, manual and AI narrative versions, approvals, stale/concurrent updates, chat source/section context, history beyond a page, answer copying and conversation deletion. Security cases exercise hostile Markdown, inaccessible resources, session expiry, cross-tab rotation/logout and upload limits. Keyboard focus and automated axe WCAG A/AA checks run on desktop, mobile and dark theme; screenshots are saved under `test-results`. Linux CI installs browser dependencies with `npx playwright install --with-deps chromium`.
+
+The [verification report](../docs/frontend-verification.md) maps these checks to features and records actual results and inspected screenshots. Automated accessibility checks do not replace a complete assistive-technology audit, and synthetic documents do not establish OCR or AI accuracy for every real document.
 
 ## Production hosting
 

@@ -8,6 +8,7 @@ import {
   useNavigate,
 } from 'react-router-dom';
 import * as Menu from '@radix-ui/react-dropdown-menu';
+import * as Dialog from '@radix-ui/react-dialog';
 import {
   BookOpen,
   ChevronDown,
@@ -80,6 +81,14 @@ export function Shell() {
   useEffect(() => {
     document.getElementById('main-content')?.focus({ preventScroll: true });
   }, [location.pathname]);
+  useEffect(() => {
+    const desktop = matchMedia('(min-width: 768px)');
+    const closeOnResize = () => {
+      if (desktop.matches) setMobileOpen(false);
+    };
+    desktop.addEventListener('change', closeOnResize);
+    return () => desktop.removeEventListener('change', closeOnResize);
+  }, []);
   async function signOut(everywhere = false) {
     setLogoutBusy(true);
     setLogoutError(null);
@@ -101,227 +110,242 @@ export function Shell() {
           .toLocaleLowerCase('it')
           .includes(search.toLocaleLowerCase('it')),
       ) || [];
+  const sidebarContent = (
+    <>
+      <div className="sidebar-top">
+        <Link to="/" className="wordmark" onClick={closeMobile}>
+          Expertise
+          <span className="wordmark-dot" />
+        </Link>
+        <IconButton
+          label="Chiudi la barra laterale"
+          className="desktop-only"
+          onClick={() => setCollapsed(true)}
+        >
+          <PanelLeft size={20} />
+        </IconButton>
+        <IconButton
+          label="Chiudi il menu"
+          className="mobile-only"
+          onClick={closeMobile}
+        >
+          <X size={20} />
+        </IconButton>
+      </div>
+      <nav className="sidebar-actions">
+        <button
+          type="button"
+          className="nav-item"
+          onClick={() => {
+            setNewCase(true);
+            closeMobile();
+          }}
+        >
+          <Plus size={19} />
+          Nuova pratica
+        </button>
+        <NavLink className="nav-item" to="/library" onClick={closeMobile}>
+          <Library size={19} />
+          Libreria documenti
+        </NavLink>
+        <NavLink className="nav-item" to="/guide" onClick={closeMobile}>
+          <BookOpen size={19} />
+          Come funziona
+        </NavLink>
+      </nav>
+      <div className="sidebar-scroll">
+        <div className="sidebar-label">Le tue pratiche</div>
+        <label className="sidebar-search">
+          <Search size={15} aria-hidden="true" />
+          <span className="sr-only">Cerca nelle pratiche caricate</span>
+          <input
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Cerca una pratica"
+          />
+        </label>
+        {cases.isPending && <Loading label="Caricamento…" />}
+        <ErrorNotice
+          error={cases.error}
+          retry={() => {
+            void cases.refetch();
+          }}
+        />
+        <nav className="case-list">
+          {records.map((record) => (
+            <NavLink
+              key={record.id}
+              to={`/cases/${record.id}`}
+              className={`case-nav ${record.id === caseId ? 'active' : ''}`}
+              onClick={closeMobile}
+            >
+              <FolderOpen size={16} />
+              <span>{record.title}</span>
+            </NavLink>
+          ))}
+        </nav>
+        {!cases.isPending && records.length === 0 && (
+          <p className="sidebar-empty">
+            {search
+              ? 'Nessuna pratica caricata corrisponde.'
+              : 'Le tue pratiche appariranno qui.'}
+          </p>
+        )}
+        {cases.hasNextPage && (
+          <Button
+            variant="ghost"
+            busy={cases.isFetchingNextPage}
+            onClick={() => {
+              void cases.fetchNextPage();
+            }}
+          >
+            Carica altre pratiche
+          </Button>
+        )}
+        {caseId && (
+          <>
+            <div className="sidebar-label conversations-label">
+              Conversazioni
+            </div>
+            <Link
+              className="case-nav"
+              to={`/cases/${caseId}`}
+              onClick={closeMobile}
+            >
+              <Plus size={15} />
+              <span>Nuova conversazione</span>
+            </Link>
+            <ErrorNotice
+              error={chats.error}
+              retry={() => {
+                void chats.refetch();
+              }}
+            />
+            {chats.data?.pages.flat().map((chat) => (
+              <div className="chat-nav-row" key={chat.id}>
+                <NavLink
+                  to={`/cases/${caseId}/chat/${chat.id}`}
+                  className="chat-nav"
+                  onClick={closeMobile}
+                >
+                  {chat.title || 'Conversazione'}
+                </NavLink>
+                <IconButton
+                  label={`Elimina conversazione ${chat.title || ''}`}
+                  onClick={() => {
+                    deleteChat.reset();
+                    setDeleteId(chat.id);
+                  }}
+                >
+                  <Trash2 size={14} />
+                </IconButton>
+              </div>
+            ))}
+            {chats.hasNextPage && (
+              <Button
+                variant="ghost"
+                busy={chats.isFetchingNextPage}
+                onClick={() => {
+                  void chats.fetchNextPage();
+                }}
+              >
+                Carica altre conversazioni
+              </Button>
+            )}
+          </>
+        )}
+      </div>
+      <div className="sidebar-account">
+        <Menu.Root>
+          <Menu.Trigger asChild>
+            <button type="button" className="account-button">
+              <span className="avatar">
+                {auth.user?.email.charAt(0).toUpperCase()}
+              </span>
+              <span>
+                <strong>Il tuo workspace</strong>
+                <small>{auth.user?.email}</small>
+              </span>
+              <ChevronDown size={15} />
+            </button>
+          </Menu.Trigger>
+          <Menu.Portal>
+            <Menu.Content
+              className="menu-content"
+              side="top"
+              align="start"
+              sideOffset={8}
+            >
+              <Menu.Item className="menu-item" onSelect={() => setDark(!dark)}>
+                {dark ? <Sun size={17} /> : <Moon size={17} />}
+                {dark ? 'Tema chiaro' : 'Tema scuro'}
+              </Menu.Item>
+              <Menu.Separator className="menu-separator" />
+              <Menu.Item
+                className="menu-item"
+                disabled={logoutBusy}
+                onSelect={() => {
+                  void signOut();
+                }}
+              >
+                <LogOut size={17} />
+                Esci
+              </Menu.Item>
+              <Menu.Item
+                className="menu-item"
+                onSelect={() => {
+                  setLogoutError(null);
+                  setLogoutAll(true);
+                }}
+              >
+                <LogOut size={17} />
+                Esci da tutte le sessioni
+              </Menu.Item>
+            </Menu.Content>
+          </Menu.Portal>
+        </Menu.Root>
+        <ErrorNotice error={logoutError} />
+      </div>
+    </>
+  );
   return (
     <div className={`app-shell ${collapsed ? 'sidebar-collapsed' : ''}`}>
       <a className="skip-link" href="#main-content">
         Vai al contenuto
       </a>
-      {mobileOpen && (
-        <button
-          type="button"
-          className="sidebar-backdrop"
-          aria-label="Chiudi la navigazione"
-          onClick={closeMobile}
-        />
-      )}
       <aside
-        className={`sidebar ${mobileOpen ? 'sidebar-open' : ''}`}
+        className="sidebar desktop-sidebar"
         aria-label="Navigazione principale"
       >
-        <div className="sidebar-top">
-          <Link to="/" className="wordmark" onClick={closeMobile}>
-            Expertise
-            <span className="wordmark-dot" />
-          </Link>
-          <IconButton
-            label="Chiudi la barra laterale"
-            className="desktop-only"
-            onClick={() => setCollapsed(true)}
-          >
-            <PanelLeft size={20} />
-          </IconButton>
-          <IconButton
-            label="Chiudi il menu"
-            className="mobile-only"
-            onClick={closeMobile}
-          >
-            <X size={20} />
-          </IconButton>
-        </div>
-        <nav className="sidebar-actions">
-          <button
-            type="button"
-            className="nav-item"
-            onClick={() => {
-              setNewCase(true);
-              closeMobile();
-            }}
-          >
-            <Plus size={19} />
-            Nuova pratica
-          </button>
-          <NavLink className="nav-item" to="/library" onClick={closeMobile}>
-            <Library size={19} />
-            Libreria documenti
-          </NavLink>
-          <NavLink className="nav-item" to="/guide" onClick={closeMobile}>
-            <BookOpen size={19} />
-            Come funziona
-          </NavLink>
-        </nav>
-        <div className="sidebar-scroll">
-          <div className="sidebar-label">Le tue pratiche</div>
-          <label className="sidebar-search">
-            <Search size={15} aria-hidden="true" />
-            <span className="sr-only">Cerca nelle pratiche caricate</span>
-            <input
-              type="search"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Cerca una pratica"
-            />
-          </label>
-          {cases.isPending && <Loading label="Caricamento…" />}
-          <ErrorNotice
-            error={cases.error}
-            retry={() => {
-              void cases.refetch();
-            }}
-          />
-          <nav className="case-list">
-            {records.map((record) => (
-              <NavLink
-                key={record.id}
-                to={`/cases/${record.id}`}
-                className={`case-nav ${record.id === caseId ? 'active' : ''}`}
-                onClick={closeMobile}
-              >
-                <FolderOpen size={16} />
-                <span>{record.title}</span>
-              </NavLink>
-            ))}
-          </nav>
-          {!cases.isPending && records.length === 0 && (
-            <p className="sidebar-empty">
-              {search
-                ? 'Nessuna pratica caricata corrisponde.'
-                : 'Le tue pratiche appariranno qui.'}
-            </p>
-          )}
-          {cases.hasNextPage && (
-            <Button
-              variant="ghost"
-              busy={cases.isFetchingNextPage}
-              onClick={() => {
-                void cases.fetchNextPage();
-              }}
-            >
-              Carica altre pratiche
-            </Button>
-          )}
-          {caseId && (
-            <>
-              <div className="sidebar-label conversations-label">
-                Conversazioni
-              </div>
-              <Link
-                className="case-nav"
-                to={`/cases/${caseId}`}
-                onClick={closeMobile}
-              >
-                <Plus size={15} />
-                <span>Nuova conversazione</span>
-              </Link>
-              <ErrorNotice
-                error={chats.error}
-                retry={() => {
-                  void chats.refetch();
-                }}
-              />
-              {chats.data?.pages.flat().map((chat) => (
-                <div className="chat-nav-row" key={chat.id}>
-                  <NavLink
-                    to={`/cases/${caseId}/chat/${chat.id}`}
-                    className="chat-nav"
-                    onClick={closeMobile}
-                  >
-                    {chat.title || 'Conversazione'}
-                  </NavLink>
-                  <IconButton
-                    label={`Elimina conversazione ${chat.title || ''}`}
-                    onClick={() => {
-                      deleteChat.reset();
-                      setDeleteId(chat.id);
-                    }}
-                  >
-                    <Trash2 size={14} />
-                  </IconButton>
-                </div>
-              ))}
-              {chats.hasNextPage && (
-                <Button
-                  variant="ghost"
-                  busy={chats.isFetchingNextPage}
-                  onClick={() => {
-                    void chats.fetchNextPage();
-                  }}
-                >
-                  Carica altre conversazioni
-                </Button>
-              )}
-            </>
-          )}
-        </div>
-        <div className="sidebar-account">
-          <Menu.Root>
-            <Menu.Trigger asChild>
-              <button type="button" className="account-button">
-                <span className="avatar">
-                  {auth.user?.email.charAt(0).toUpperCase()}
-                </span>
-                <span>
-                  <strong>Il tuo workspace</strong>
-                  <small>{auth.user?.email}</small>
-                </span>
-                <ChevronDown size={15} />
-              </button>
-            </Menu.Trigger>
-            <Menu.Portal>
-              <Menu.Content
-                className="menu-content"
-                side="top"
-                align="start"
-                sideOffset={8}
-              >
-                <Menu.Item
-                  className="menu-item"
-                  onSelect={() => setDark(!dark)}
-                >
-                  {dark ? <Sun size={17} /> : <Moon size={17} />}
-                  {dark ? 'Tema chiaro' : 'Tema scuro'}
-                </Menu.Item>
-                <Menu.Separator className="menu-separator" />
-                <Menu.Item
-                  className="menu-item"
-                  disabled={logoutBusy}
-                  onSelect={() => {
-                    void signOut();
-                  }}
-                >
-                  <LogOut size={17} />
-                  Esci
-                </Menu.Item>
-                <Menu.Item
-                  className="menu-item"
-                  onSelect={() => {
-                    setLogoutError(null);
-                    setLogoutAll(true);
-                  }}
-                >
-                  <LogOut size={17} />
-                  Esci da tutte le sessioni
-                </Menu.Item>
-              </Menu.Content>
-            </Menu.Portal>
-          </Menu.Root>
-          <ErrorNotice error={logoutError} />
-        </div>
+        {sidebarContent}
       </aside>
+      <Dialog.Root open={mobileOpen} onOpenChange={setMobileOpen}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="sidebar-backdrop" />
+          <Dialog.Content
+            className="sidebar sidebar-open"
+            onCloseAutoFocus={(event) => {
+              event.preventDefault();
+              document.getElementById('mobile-menu-trigger')?.focus();
+            }}
+          >
+            <Dialog.Title className="sr-only">
+              Navigazione principale
+            </Dialog.Title>
+            <Dialog.Description className="sr-only">
+              Pratiche, conversazioni, documenti e account.
+            </Dialog.Description>
+            {sidebarContent}
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
       <div className="workspace">
         <header className="app-topbar">
           <div className="topbar-left">
             <IconButton
               label="Apri il menu"
+              id="mobile-menu-trigger"
               className="mobile-only"
               onClick={() => setMobileOpen(true)}
             >

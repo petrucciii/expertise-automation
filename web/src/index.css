@@ -1008,6 +1008,10 @@ hr {
     transform: translateX(0);
     visibility: visible;
   }
+  .sidebar.desktop-sidebar,
+  .sidebar-collapsed .sidebar.desktop-sidebar {
+    display: none;
+  }
   .sidebar-backdrop {
     position: fixed;
     inset: 0;

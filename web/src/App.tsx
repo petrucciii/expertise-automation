@@ -3,6 +3,7 @@ import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom';
 import { useAuth } from './auth/auth-context';
 import { AuthPage } from './auth/AuthPage';
 import { Shell } from './components/Shell';
+import { RenderErrorBoundary } from './components/RenderErrorBoundary';
 import { EmptyState, Loading } from './components/ui';
 import { CaseLayout } from './features/cases/CaseLayout';
 import { HomePage } from './features/cases/HomePage';
@@ -35,43 +36,45 @@ function RequireAuth() {
 }
 export default function App() {
   return (
-    <Suspense fallback={<Loading />}>
-      <Routes>
-        <Route path="/login" element={<AuthPage />} />
-        <Route element={<RequireAuth />}>
-          <Route element={<Shell />}>
-            <Route index element={<HomePage />} />
-            <Route path="library" element={<LibraryPage />} />
-            <Route path="guide" element={<GuidePage />} />
-            <Route path="cases/:caseId" element={<CaseLayout />}>
-              <Route index element={<ChatPage />} />
-              <Route path="chat/:chatId" element={<ChatPage />} />
-              <Route path="overview" element={<OverviewPage />} />
-              <Route path="sources" element={<SourcesPage />} />
-              <Route path="review" element={<ReviewPage />} />
-              <Route path="evidence" element={<EvidencePage />} />
-              <Route path="timeline" element={<TimelinePage />} />
-              <Route path="checks" element={<ChecksPage />} />
-              <Route path="results" element={<ResultsPage />} />
+    <RenderErrorBoundary>
+      <Suspense fallback={<Loading />}>
+        <Routes>
+          <Route path="/login" element={<AuthPage />} />
+          <Route element={<RequireAuth />}>
+            <Route element={<Shell />}>
+              <Route index element={<HomePage />} />
+              <Route path="library" element={<LibraryPage />} />
+              <Route path="guide" element={<GuidePage />} />
+              <Route path="cases/:caseId" element={<CaseLayout />}>
+                <Route index element={<ChatPage />} />
+                <Route path="chat/:chatId" element={<ChatPage />} />
+                <Route path="overview" element={<OverviewPage />} />
+                <Route path="sources" element={<SourcesPage />} />
+                <Route path="review" element={<ReviewPage />} />
+                <Route path="evidence" element={<EvidencePage />} />
+                <Route path="timeline" element={<TimelinePage />} />
+                <Route path="checks" element={<ChecksPage />} />
+                <Route path="results" element={<ResultsPage />} />
+              </Route>
+              <Route
+                path="*"
+                element={
+                  <EmptyState
+                    title="Pagina non trovata"
+                    action={
+                      <a className="button button-primary" href="/">
+                        Apri le pratiche
+                      </a>
+                    }
+                  >
+                    Questo indirizzo non corrisponde a una pagina del workspace.
+                  </EmptyState>
+                }
+              />
             </Route>
-            <Route
-              path="*"
-              element={
-                <EmptyState
-                  title="Pagina non trovata"
-                  action={
-                    <a className="button button-primary" href="/">
-                      Apri le pratiche
-                    </a>
-                  }
-                >
-                  Questo indirizzo non corrisponde a una pagina del workspace.
-                </EmptyState>
-              }
-            />
           </Route>
-        </Route>
-      </Routes>
-    </Suspense>
+        </Routes>
+      </Suspense>
+    </RenderErrorBoundary>
   );
 }

@@ -145,8 +145,8 @@ function IssueFields({
       status,
       severity: severity.trim(),
       suggestedCheck: check.trim(),
-      ...(rule.trim() ? { ruleId: rule.trim() } : {}),
-      ...(version.trim() ? { ruleVersion: version.trim() } : {}),
+      ...(!issue && rule.trim() ? { ruleId: rule.trim() } : {}),
+      ...(!issue && version.trim() ? { ruleVersion: version.trim() } : {}),
       evidenceIds,
     });
   }

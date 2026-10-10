@@ -1,4 +1,9 @@
-import { useId, type ButtonHTMLAttributes, type ReactNode } from 'react';
+import {
+  useId,
+  useRef,
+  type ButtonHTMLAttributes,
+  type ReactNode,
+} from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { AlertCircle, Check, FileText, LoaderCircle, X } from 'lucide-react';
 import { errorMessage } from '../lib/api-client';
@@ -92,6 +97,7 @@ export function Modal({
   children: ReactNode;
   wide?: boolean;
 }) {
+  const opener = useRef<HTMLElement | null>(null);
   return (
     <Dialog.Root
       open={open}
@@ -101,7 +107,20 @@ export function Modal({
     >
       <Dialog.Portal>
         <Dialog.Overlay className="dialog-overlay" />
-        <Dialog.Content className={`dialog ${wide ? 'dialog-wide' : ''}`}>
+        <Dialog.Content
+          className={`dialog ${wide ? 'dialog-wide' : ''}`}
+          onOpenAutoFocus={() => {
+            // Dialogs open from several action buttons rather than a single Radix Trigger.
+            opener.current =
+              document.activeElement instanceof HTMLElement
+                ? document.activeElement
+                : null;
+          }}
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            if (opener.current?.isConnected) opener.current.focus();
+          }}
+        >
           <div className="dialog-heading">
             <Dialog.Title>{title}</Dialog.Title>
             <Dialog.Close asChild>

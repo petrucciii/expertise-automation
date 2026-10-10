@@ -31,6 +31,7 @@ export function ArtifactEditor({
 }) {
   const record = useCase();
   const invalidate = useInvalidateCase(record.id);
+  const [baseContent, setBaseContent] = useState(artifact.content);
   const [sections, setSections] = useState(reportSections(artifact.content));
   const [questions, setQuestions] = useState(
     stringArray(artifact.content.openQuestions).join('\n'),
@@ -66,11 +67,11 @@ export function ArtifactEditor({
   function structuredContent(): JsonObject {
     return artifact.type === 'SURVEY_REPORT_DRAFT'
       ? {
-          ...artifact.content,
+          ...baseContent,
           sections: sections.map((section) => ({ ...section })),
         }
       : {
-          ...artifact.content,
+          ...baseContent,
           openQuestions: lines(questions),
           limitations: lines(limitations),
         };
@@ -117,6 +118,8 @@ export function ArtifactEditor({
               try {
                 const parsed: unknown = JSON.parse(json);
                 if (!isObject(parsed)) throw new Error('Contenuto non valido.');
+                // Keep fields edited in JSON when returning to the structured editor.
+                setBaseContent(parsed);
                 setSections(reportSections(parsed));
                 setQuestions(stringArray(parsed.openQuestions).join('\n'));
                 setLimitations(stringArray(parsed.limitations).join('\n'));
@@ -125,6 +128,7 @@ export function ArtifactEditor({
                 return;
               }
             }
+            setError(null);
             setAdvanced(event.target.checked);
           }}
         />

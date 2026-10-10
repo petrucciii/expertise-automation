@@ -198,7 +198,11 @@ function CalculationFields({ onClose }: { onClose: () => void }) {
             <select
               id={id}
               value={decimal}
-              onChange={(e) => setDecimal(e.target.value as '.' | ',')}
+              onChange={(e) => {
+                const separator = e.target.value as '.' | ',';
+                setDecimal(separator);
+                if (thousands === separator) setThousands('');
+              }}
             >
               <option value=",">Virgola (,)</option>
               <option value=".">Punto (.)</option>

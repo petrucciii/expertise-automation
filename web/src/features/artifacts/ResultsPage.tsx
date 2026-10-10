@@ -98,7 +98,7 @@ function ArtifactCard({
   const invalidate = useInvalidateCase(record.id);
   const [open, setOpen] = useState(false);
   const [history, setHistory] = useState(false);
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState<Artifact | null>(null);
   const [approving, setApproving] = useState(false);
   const [enhancing, setEnhancing] = useState(false);
   const [target, setTarget] = useState('');
@@ -119,7 +119,7 @@ function ArtifactCard({
       }),
     onSuccess: async () => {
       setEnhancing(false);
-      setEditing(false);
+      setEditing(null);
       await invalidate();
     },
   });
@@ -169,7 +169,7 @@ function ArtifactCard({
             <Button
               variant="secondary"
               onClick={() => {
-                setEditing(false);
+                setEditing(null);
                 setOpen(true);
               }}
             >
@@ -215,7 +215,7 @@ function ArtifactCard({
         open={open}
         onClose={() => {
           setOpen(false);
-          setEditing(false);
+          setEditing(null);
         }}
         title={`${labels.name}${opened ? ` · v${opened.version}` : ''}`}
         description={
@@ -240,15 +240,15 @@ function ArtifactCard({
                 prima di modificarla, approvarla o esportarla.
               </Notice>
             )}
-            {editing && editable ? (
+            {editing ? (
               <ArtifactEditor
-                key={opened.id}
-                artifact={opened}
+                key={editing.id}
+                artifact={editing}
                 onSaved={() => {
-                  setEditing(false);
+                  setEditing(null);
                   void current.refetch();
                 }}
-                onCancel={() => setEditing(false)}
+                onCancel={() => setEditing(null)}
               />
             ) : (
               <>
@@ -258,7 +258,7 @@ function ArtifactCard({
                     <Button
                       variant="secondary"
                       disabled={!editable || busy}
-                      onClick={() => setEditing(true)}
+                      onClick={() => setEditing(opened)}
                     >
                       <Pencil size={15} />
                       Modifica testo
@@ -317,7 +317,7 @@ function ArtifactCard({
         open={enhancing}
         onClose={() => setEnhancing(false)}
         title={`Nuova versione · ${labels.name}`}
-        description="Il sistema compone una nuova versione dai dati della pratica e aggiunge suggerimenti AI separati. Le versioni manuali precedenti restano nello storico."
+        description="Il testo manuale aggiornato viene conservato, con suggerimenti AI separati. Se la pratica è cambiata, il testo viene ricomposto dalle evidenze correnti. Ogni versione precedente resta nello storico."
       >
         {type === 'SURVEY_REPORT_DRAFT' && (
           <Field label="Sezione per i suggerimenti">
