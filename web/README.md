@@ -55,6 +55,14 @@ Browser scenarios cover all eight practice screens, the library, registration, c
 
 The [verification report](../docs/frontend-verification.md) maps these checks to features and records actual results and inspected screenshots. Automated accessibility checks do not replace a complete assistive-technology audit, and synthetic documents do not establish OCR or AI accuracy for every real document.
 
+## Live local UI rehearsal
+
+Start the configured API after applying its migrations, then start this frontend on `http://localhost:5173`. Run `npm run test:live-ui` to use those running services. `LIVE_UI_BASE_URL` can select another HTTP loopback origin; remote hosts are rejected. This command does not start a disposable backend, replace Gemini or disable rate limits. It registers a uniquely named `qa-live-ui-...@example.test` account, creates synthetic cases, uploads sector documents, confirms OCR, reviews facts, calculates, edits narratives, approves and downloads the four outputs. Synthetic sources are sent to Google using the API's configured key and may consume quota.
+
+Provider `503` responses are accepted only when the UI preserves the saved conversation or draft and explains the outage. The observation JSON records which AI steps actually succeeded; a recovery test is not counted as proof that a generation succeeded. Unexpected `500` errors fail the affected workflow. QA session metadata contains account email and created case IDs, never passwords or tokens. The runner leaves its synthetic records in the configured database; use its recorded IDs to clean up only that rehearsal's accounts and records. On Windows, set `CI=true` only for a background Vite process when its non-interactive stdin may close; this does not change application validation or throttling.
+
+Screenshots, exports and provider observations are written to `test-results-live`, with the HTML report in `playwright-report-live`. These directories are separate from the isolated runner, excluded from Vite's watcher, and denied by the dev server so verification HTML cannot reload unsaved input or expose traces. Both runners must finish before collecting their outputs. The [live verification report](../docs/live-ui-verification-2026-10-10.md) records the actual rehearsal and cleanup.
+
 ## Production hosting
 
 `npm run build` produces `dist`. Serve that directory from an HTTPS static host and route `/api` to the Nest server on the same origin. Configure history fallback to `index.html` for app routes, preserve the request `Origin`, keep uploads private, and set the API's allowed origin to the frontend's exact HTTPS origin. A static `vite preview` is a build inspection server and does not provide the development API proxy.
