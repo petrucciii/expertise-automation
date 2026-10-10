@@ -1,6 +1,7 @@
 import ExcelJS from 'exceljs';
 import { Document, HeadingLevel, Packer, Paragraph } from 'docx';
 import { randomUUID } from 'node:crypto';
+import sharp from 'sharp';
 
 // All names, quantities, identifiers, and events below are synthetic test data.
 export const sectorExamples = {
@@ -59,6 +60,16 @@ export async function cargoDocx(lines: string[]): Promise<Buffer> {
       ],
     }),
   );
+}
+
+/** Legible synthetic label for browser OCR tests; it contains no real shipment data. */
+export async function cargoLabelImage(
+  format: 'png' | 'jpeg' | 'tiff',
+): Promise<Buffer> {
+  const svg = Buffer.from(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="900"><rect width="1400" height="900" fill="white"/><g fill="black" font-family="Arial" font-size="52"><text x="60" y="110">SYNTHETIC CARGO LABEL</text><text x="60" y="220">Container TEST000003</text><text x="60" y="330">24 cartons on 2 pallets</text><text x="60" y="440">Inspection date 2026-09-08</text><text x="60" y="550">Seal TESTSEAL001</text><text x="60" y="660">Cause not verified</text></g></svg>',
+  );
+  return sharp(svg).toFormat(format).toBuffer();
 }
 
 /** A small independent PDF writer keeps parser tests independent of the parser under test. */

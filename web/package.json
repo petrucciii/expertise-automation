@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "lint": "oxlint --type-aware --deny-warnings src/ tests/ *.ts",
+    "lint": "oxlint --type-aware --deny-warnings src/ tests/ tests-live/ *.ts",
     "preview": "vite preview",
     "typecheck": "tsc -b && tsc -p tsconfig.test.json",
     "format": "prettier --write .",
@@ -14,6 +14,7 @@
     "test": "vitest run",
     "test:cov": "vitest run --coverage",
     "test:e2e": "playwright test",
+    "test:live-ui": "playwright test --config playwright.live.config.ts",
     "check": "npm run build && npm run typecheck && npm run lint && npm run format:check && npm test"
   },
   "engines": {

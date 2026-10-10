@@ -3,6 +3,6 @@
   "compilerOptions": {
     "types": ["vite/client", "node", "@testing-library/jest-dom"]
   },
-  "include": ["src", "tests", "*.ts"],
+  "include": ["src", "tests", "tests-live", "*.ts"],
   "exclude": ["node_modules", "dist"]
 }
