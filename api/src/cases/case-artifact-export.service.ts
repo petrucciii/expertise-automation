@@ -11,6 +11,7 @@ import {
 import { CaseArtifactType } from '../generated/prisma/client.js';
 import { CaseArtifactsService } from './case-artifacts.service.js';
 import { CasesService } from './cases.service.js';
+import { describeEventDate } from './report-event-date.js';
 
 export type ArtifactDownload = {
   buffer: Buffer;
@@ -294,6 +295,7 @@ function appendPreliminaryReview(
       continue;
     }
     const date = toText(event.date);
+    const dateLabel = describeEventDate(date || null, toText(event.dateType));
     const sources = Array.isArray(event.sources)
       ? event.sources
           .map((source) => (isRecord(source) ? toText(source.sourceCode) : ''))
@@ -301,7 +303,7 @@ function appendPreliminaryReview(
       : [];
     children.push(
       new Paragraph({
-        text: `${date ? `${date.slice(0, 10)} — ` : ''}${toText(event.event)} [${toText(event.epistemicStatus)}]${event.attribution ? ` — ${toText(event.attribution)}` : ''}${sources.length ? ` (${sources.join(', ')})` : ''}`,
+        text: `${dateLabel ? `${dateLabel} — ` : ''}${toText(event.event)} [${toText(event.epistemicStatus)}]${event.attribution ? ` — ${toText(event.attribution)}` : ''}${sources.length ? ` (${sources.join(', ')})` : ''}`,
         bullet: { level: 0 },
       }),
     );

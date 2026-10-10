@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { CasesService } from './cases.service.js';
 import { CaseReportService } from './case-report.service.js';
+import { describeEventDate } from './report-event-date.js';
 
 function record(evidence: unknown[] = [], events: unknown[] = []) {
   return {
@@ -45,6 +46,63 @@ function service(value: unknown) {
 }
 
 describe('Report wording and epistemic boundaries', () => {
+  it.each([
+    ['EVENT', 'Data dell’evento'],
+    ['DOCUMENT', 'Data del documento'],
+    ['RECEIVED', 'Data di ricezione'],
+    ['UNKNOWN', 'significato non verificato'],
+  ])(
+    'labels %s dates without turning every date into an occurrence',
+    (type, label) => {
+      expect(describeEventDate('2026-10-10T00:00:00Z', type)).toContain(label);
+      expect(
+        describeEventDate(new Date('2026-10-10T00:00:00Z'), type),
+      ).toContain('2026-10-10');
+    },
+  );
+  it('does not invent a missing date or give an unknown date type an occurrence meaning', () => {
+    expect(describeEventDate(null, 'EVENT')).toBe('');
+    expect(describeEventDate('2026-10-10', 'constructor')).toContain(
+      'significato non verificato',
+    );
+  });
+  it.each([
+    'OBSERVED',
+    'REPORTED',
+    'STATED_IN_DOCUMENT',
+    'CALCULATED',
+    'DISPUTED',
+    'UNKNOWN',
+  ])(
+    'preserves the registered actor and receipt date in %s event prose',
+    async (status) => {
+      const event = {
+        event: 'Ricezione del logger da parte del perito',
+        date: new Date('2026-10-10T00:00:00Z'),
+        dateType: 'RECEIVED',
+        epistemicStatus: status,
+        attribution: 'Perito sintetico',
+        sourceLinks: [
+          {
+            caseDocument: { sourceCode: 'DOC-001' },
+            pageNumber: null,
+            excerpt: null,
+          },
+        ],
+      };
+      const output = await service(record([], [event])).generate(
+        'case-test',
+        1,
+      );
+      const section = output.sections.find(
+        (item) => item.id === 'documented-events',
+      )!;
+      expect(section.paragraphs.join(' ')).toContain(
+        'Data di ricezione: 2026-10-10',
+      );
+      expect(section.paragraphs.join(' ')).toContain('Perito sintetico');
+    },
+  );
   it.each([
     ['OBSERVED', 'La pratica registra un rilievo del perito'],
     ['REPORTED', 'The consignee riferisce'],

@@ -2,7 +2,11 @@ import { useState, type FormEvent } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { CalendarDays, Plus } from 'lucide-react';
 import { api } from '../../lib/api';
-import { evidenceStatuses, formatDate } from '../../lib/labels';
+import {
+  evidenceStatuses,
+  formatDate,
+  eventDateLabels as dateLabels,
+} from '../../lib/labels';
 import { useInvalidateCase } from '../../lib/queries';
 import type {
   EventDateType,
@@ -21,12 +25,6 @@ import {
 import { useCase } from '../cases/case-context';
 import { SourceLinks, SourceReferences } from './SourceReferences';
 
-const dateLabels: Record<EventDateType, string> = {
-  EVENT: 'Data dell’evento',
-  DOCUMENT: 'Data del documento',
-  RECEIVED: 'Data di ricezione',
-  UNKNOWN: 'Tipo di data non verificato',
-};
 export default function TimelinePage() {
   const record = useCase();
   const [adding, setAdding] = useState(false);

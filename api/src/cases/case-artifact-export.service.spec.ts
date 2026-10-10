@@ -96,6 +96,30 @@ describe('CaseArtifactExportService', () => {
     expect(result.contentType).toContain('wordprocessingml.document');
     expect(result.buffer.subarray(0, 2).toString('ascii')).toBe('PK');
   });
+  it('keeps receipt-date semantics and the registered actor in the preliminary DOCX', async () => {
+    const service = createService(CaseArtifactType.PRELIMINARY_REVIEW, {
+      chronology: [
+        {
+          event: 'Ricezione del logger',
+          date: '2026-10-10T00:00:00Z',
+          dateType: 'RECEIVED',
+          epistemicStatus: 'REPORTED',
+          attribution: 'Perito sintetico',
+          sources: [{ sourceCode: 'DOC-001' }],
+        },
+      ],
+    });
+    const result = await service.exportLatest(
+      'case-1',
+      7,
+      CaseArtifactType.PRELIMINARY_REVIEW,
+    );
+    const text = (await mammoth.extractRawText({ buffer: result.buffer }))
+      .value;
+    expect(text).toContain('Data di ricezione: 2026-10-10');
+    expect(text).toContain('Perito sintetico');
+    expect(text).toContain('DOC-001');
+  });
 });
 
 function createService(type: CaseArtifactType, content: unknown) {

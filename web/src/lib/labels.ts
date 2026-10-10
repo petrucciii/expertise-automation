@@ -5,6 +5,7 @@ import type {
   CaseStatus,
   ChecklistStatus,
   EvidenceStatus,
+  EventDateType,
   ExtractionStatus,
   Json,
 } from './types';
@@ -29,6 +30,12 @@ export const evidenceStatuses: Record<EvidenceStatus, string> = {
   CALCULATED: 'Calcolato',
   DISPUTED: 'Contestato',
   UNKNOWN: 'Non verificato',
+};
+export const eventDateLabels: Record<EventDateType, string> = {
+  EVENT: 'Data dell’evento',
+  DOCUMENT: 'Data del documento',
+  RECEIVED: 'Data di ricezione',
+  UNKNOWN: 'Tipo di data non verificato',
 };
 export const availabilities: Record<Availability, string> = {
   ORIGINAL_ACCESSIBLE: 'Originale accessibile',

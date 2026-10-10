@@ -1,7 +1,12 @@
 import { useState } from 'react';
-import type { CaseSource, Json, JsonObject } from '../../lib/types';
+import type {
+  CaseSource,
+  EventDateType,
+  Json,
+  JsonObject,
+} from '../../lib/types';
 import { isObject, reportSections } from '../../lib/artifact-content';
-import { displayValue } from '../../lib/labels';
+import { displayValue, eventDateLabels } from '../../lib/labels';
 import { Badge, Notice } from '../../components/ui';
 import { useCase } from '../cases/case-context';
 import { DocumentReader } from '../documents/DocumentReader';
@@ -106,6 +111,8 @@ const labels: Record<string, string> = {
   status: 'Stato',
   title: 'Titolo',
   date: 'Data',
+  dateType: 'Significato della data',
+  date_type: 'Significato della data',
   event: 'Evento',
   source_refs: 'Riferimenti',
   sources: 'Fonti',
@@ -171,7 +178,13 @@ function ContentTree({ value, depth = 0 }: { value: Json; depth?: number }) {
             <div key={key}>
               <dt>{labels[key] || key.replaceAll('_', ' ')}</dt>
               <dd>
-                <ContentTree value={item} depth={depth + 1} />
+                {(key === 'dateType' || key === 'date_type') &&
+                typeof item === 'string' &&
+                Object.hasOwn(eventDateLabels, item.toUpperCase()) ? (
+                  eventDateLabels[item.toUpperCase() as EventDateType]
+                ) : (
+                  <ContentTree value={item} depth={depth + 1} />
+                )}
               </dd>
             </div>
           ))}

@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { CasesService } from './cases.service.js';
+import { describeEventDate } from './report-event-date.js';
 import {
   REPORT_TEMPLATE_ID,
   REPORT_TEMPLATE_VERSION,
@@ -51,7 +52,12 @@ export class CaseReportService {
         dateType: event.dateType,
         epistemicStatus: event.epistemicStatus,
         attribution: event.attribution,
-        text: phraseForEvent(event, sources),
+        // The attributed actor must survive prose rendering for every epistemic status.
+        text:
+          phraseForEvent(event, sources) +
+          (event.attribution?.trim() && event.epistemicStatus !== 'REPORTED'
+            ? ` (attribuzione registrata: ${event.attribution.trim()})`
+            : ''),
         sources,
       };
     });
@@ -230,9 +236,8 @@ function phraseForEvent(
   sources: Array<{ sourceCode: string; pageNumber: number | null }>,
 ): string {
   const references = formatSourceReferences(sources) || 'fonte non indicata';
-  const datePrefix = event.date
-    ? event.date.toISOString().slice(0, 10) + ': '
-    : '';
+  const dateLabel = describeEventDate(event.date, event.dateType);
+  const datePrefix = dateLabel ? dateLabel + ' — ' : '';
   switch (event.epistemicStatus) {
     case 'OBSERVED':
       return (
