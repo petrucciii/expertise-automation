@@ -2,10 +2,18 @@ import type { User } from './types';
 
 export class ApiError extends Error {
   readonly status: number;
-  constructor(status: number, message: string) {
+  readonly code?: string;
+  readonly chatId?: string;
+  constructor(
+    status: number,
+    message: string,
+    details: { code?: string; chatId?: string } = {},
+  ) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
+    this.code = details.code;
+    this.chatId = details.chatId;
   }
 }
 type SessionResponse = { accessToken: string; expiresIn: number; user?: User };
@@ -20,6 +28,8 @@ const defaultMessages: Record<number, string> = {
   503: 'L’assistente non è disponibile. Riprova tra poco; i dati della pratica sono conservati.',
 };
 export function errorMessage(error: unknown): string {
+  if (error instanceof ApiError && error.code === 'DATABASE_SCHEMA_OUTDATED')
+    return 'Il database del server richiede un aggiornamento. Applica le migrazioni indicate nella guida di avvio.';
   if (error instanceof ApiError)
     return `${defaultMessages[error.status] || 'Il server non ha completato la richiesta.'}${error.status === 400 || error.status === 409 ? ` ${error.message}` : ''}`;
   if (error instanceof Error && error.name === 'TimeoutError')
@@ -217,11 +227,23 @@ export class ApiClient {
     binary: boolean,
   ): Promise<T> {
     if (!response.ok) {
+      let code: string | undefined;
+      let chatId: string | undefined;
       let message =
         defaultMessages[response.status] || `HTTP ${response.status}`;
       try {
         const body: unknown = await response.json();
         if (typeof body === 'object' && body !== null && 'message' in body) {
+          if ('code' in body && body.code === 'DATABASE_SCHEMA_OUTDATED')
+            code = body.code;
+          if (
+            'chatId' in body &&
+            typeof body.chatId === 'string' &&
+            /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+              body.chatId,
+            )
+          )
+            chatId = body.chatId;
           const detail = body.message;
           if (typeof detail === 'string') message = detail.slice(0, 2000);
           else if (Array.isArray(detail))
@@ -233,7 +255,7 @@ export class ApiClient {
       } catch {
         /* An HTML proxy error is never rendered as HTML. */
       }
-      throw new ApiError(response.status, message);
+      throw new ApiError(response.status, message, { code, chatId });
     }
     if (response.status === 204) return undefined as T;
     if (binary)

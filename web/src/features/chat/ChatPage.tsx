@@ -13,6 +13,7 @@ import {
 } from '@tanstack/react-query';
 import {
   Link,
+  useLocation,
   useNavigate,
   useParams,
   useSearchParams,
@@ -32,7 +33,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { api } from '../../lib/api';
-import { ApiError } from '../../lib/api-client';
+import { ApiError, errorMessage } from '../../lib/api-client';
 import { reportSections } from '../../lib/artifact-content';
 import { sourceName } from '../../lib/labels';
 import type { CaseSource, ChatInput, Citation, Message } from '../../lib/types';
@@ -62,6 +63,7 @@ export default function ChatPage() {
 function Conversation({ chatId }: { chatId?: string }) {
   const record = useCase();
   const navigate = useNavigate();
+  const location = useLocation();
   const cache = useQueryClient();
   const [search] = useSearchParams();
   const [message, setMessage] = useState('');
@@ -69,7 +71,15 @@ function Conversation({ chatId }: { chatId?: string }) {
   const [documentIds, setDocumentIds] = useState<string[]>([]);
   const [useSelected, setUseSelected] = useState(false);
   const [target, setTarget] = useState(search.get('section') || '');
-  const [clientError, setClientError] = useState<unknown>(null);
+  const [clientError, setClientError] = useState<unknown>(() => {
+    const state: unknown = location.state;
+    return typeof state === 'object' &&
+      state !== null &&
+      'chatError' in state &&
+      typeof state.chatError === 'string'
+      ? new Error(state.chatError.slice(0, 2000))
+      : null;
+  });
   const [reader, setReader] = useState<CaseSource | null>(null);
   const [citation, setCitation] = useState<Citation | null>(null);
   const input = useRef<HTMLTextAreaElement>(null);
@@ -141,9 +151,14 @@ function Conversation({ chatId }: { chatId?: string }) {
         await cache.resetQueries({ queryKey: ['chat', chatId] });
       }
     },
-    onError: async () => {
+    onError: async (error) => {
       await cache.invalidateQueries({ queryKey: ['chats', record.id] });
       if (chatId) await cache.resetQueries({ queryKey: ['chat', chatId] });
+      else if (error instanceof ApiError && error.chatId) {
+        await navigate(`/cases/${record.id}/chat/${error.chatId}`, {
+          state: { chatError: errorMessage(error) },
+        });
+      }
     },
   });
   useEffect(() => {
@@ -282,7 +297,10 @@ function Conversation({ chatId }: { chatId?: string }) {
             </div>
             {record.documents.length === 0 && (
               <Notice>
-                <Link to="../sources" className="text-button">
+                <Link
+                  to={`/cases/${record.id}/sources`}
+                  className="text-button"
+                >
                   Aggiungi una fonte
                 </Link>{' '}
                 per analizzare documenti e citazioni della pratica.

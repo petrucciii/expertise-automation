@@ -162,6 +162,43 @@ describe('authenticated API transport', () => {
       errorMessage(new ApiError(503, 'private upstream detail')),
     ).not.toContain('private upstream detail');
   });
+  it('distinguishes migration failures from AI outages and retains a safe saved-chat ID', async () => {
+    const chatId = '019c64a2-301f-7000-8000-000000000001';
+    const client = new ApiClient(
+      '/api',
+      vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(
+          json(
+            {
+              code: 'DATABASE_SCHEMA_OUTDATED',
+              message: 'raw database detail',
+            },
+            503,
+          ),
+        )
+        .mockResolvedValueOnce(json({ message: 'AI unavailable', chatId }, 503))
+        .mockResolvedValueOnce(
+          json({ message: 'failure', chatId: '../other-owner' }, 503),
+        ),
+    );
+    let error: unknown;
+    try {
+      await client.request('/cases');
+    } catch (failure) {
+      error = failure;
+    }
+    expect(errorMessage(error)).toContain(
+      'database del server richiede un aggiornamento',
+    );
+    expect(errorMessage(error)).not.toContain('raw database detail');
+    await expect(
+      client.request('/chats', { method: 'POST', body: {} }),
+    ).rejects.toMatchObject({ status: 503, chatId });
+    await expect(
+      client.request('/chats', { method: 'POST', body: {} }),
+    ).rejects.toMatchObject({ status: 503, chatId: undefined });
+  });
   it.each([
     'https://user:secret@example.test/api',
     'javascript:alert(1)',

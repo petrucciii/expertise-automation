@@ -104,7 +104,9 @@ try {
       parts: Array<{ text?: string }>;
     }>;
     const text = contents[0]?.parts[0]?.text || '';
-    if (text.includes('SIMULATE_OVERLOAD'))
+    // Failure markers apply to the current request, not to an old message in chat history.
+    const currentRequest = text.split('CURRENT REQUEST:\n\n').at(-1) || text;
+    if (currentRequest.includes('SIMULATE_OVERLOAD'))
       return new Response('{}', { status: 503 });
     const schema = object(
       object(object(object(body.generationConfig).responseFormat).text).schema,
@@ -167,7 +169,7 @@ try {
         source?.text.slice(0, 100) ||
         '';
       value = {
-        answer: text.includes('SIMULATE_HOSTILE')
+        answer: currentRequest.includes('SIMULATE_HOSTILE')
           ? 'Testo della fonte: <img src=x onerror="window.__sourceXss=true">\n\n[Link non sicuro](javascript:alert(1))\n\n![Immagine remota](https://untrusted.example.test/tracker.png)'
           : 'Le fonti registrate vanno verificate dal perito. Le quantità restano distinte per ambito; la causa e il danno accertato non sono determinati.\n\n**Prossimo controllo:** confrontare l’originale e chiarire le questioni aperte.',
         citations:

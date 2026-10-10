@@ -9,9 +9,13 @@
   "scripts": {
     "build": "nest build",
     "format": "prettier --write \"src/**/*.{ts,mjs}\" \"test/**/*.{ts,js,html}\" \"*.ts\" \"*.json\" \"prisma/seed.ts\"",
+    "prestart": "prisma migrate status",
     "start": "nest start",
+    "prestart:dev": "prisma migrate status",
     "start:dev": "nest start --watch",
+    "prestart:debug": "prisma migrate status",
     "start:debug": "nest start --debug --watch",
+    "prestart:prod": "prisma migrate status",
     "start:prod": "node dist/main.js",
     "lint": "oxlint --type-aware --deny-warnings src/ test/ prisma/seed.ts *.ts",
     "test": "vitest run",

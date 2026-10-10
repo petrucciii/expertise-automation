@@ -30,6 +30,8 @@ The API uses the `api` prefix and port `3000` by default; `PORT` must be an inte
 
 For production, run `npm run build`, then `npm run start:prod` with `NODE_ENV=production` and HTTPS. Prisma uses the auto-discovered `prisma.config.ts`. Build generates the client and copies the DOCX parser worker. Before applying the new active-document uniqueness migration to an existing database, follow the duplicate check in the [audit's migration notes](docs/audit-2026-10-09.md#migrations-and-deployment).
 
+All `npm run start*` commands run `prisma migrate status` first and stop if the configured database has pending or failed migrations. They never apply migrations automatically. An API started directly against an older schema returns `503` with the safe code `DATABASE_SCHEMA_OUTDATED` instead of an unexplained `500`. Apply migrations, then restart. Server error logs keep a fixed error category and Prisma code without logging source records, SQL parameters or secrets.
+
 ## Authentication and HTTP contracts
 
 Access tokens are returned by login and refresh and must be sent as `Authorization: Bearer <token>`. Access tokens expire after 15 minutes. Refresh tokens are stored only in an HttpOnly cookie, expire after 30 days, and have a 90-day absolute session lifetime. Rotation detects replay and revokes the token family. Logout revokes refresh tokens; an already issued access token can remain valid until its short expiry. Deleted accounts cannot use either token type.
@@ -61,6 +63,8 @@ PDF, DOCX, XLSX, CSV, PNG, JPEG, single-page TIFF, and EML files are accepted. M
 Upload accepts one `file` part, no other fields, and at most 10 MiB. Filenames, magic bytes, actual Office ZIP expansion/CRC, and image dimensions are checked. An active owner cannot upload the same SHA-256 twice, even concurrently; soft deletion allows a later re-upload. Download and extraction verify the stored hash. Office archives are limited to 2000 entries, 20 MiB per entry and 50 MiB expanded in total. DOCX conversion runs in a worker with a configured 128 MiB old-generation JavaScript heap limit and a 15-second deadline. This is not a total process-memory limit; parent Node heap options can override it. PDF extraction accepts at most 200 pages; image and PDF OCR raster limits are 40 million pixels. Extracted text is capped at two million characters. Tables are limited to 20000 rows, 1000 columns, and 200000 populated cells. These bounds do not replace a production processing queue and storage quotas; see the audit's remaining risks.
 
 For CSV/XLSX sources, `POST /api/cases/:caseId/documents/:sourceCode/calculations` computes a selected numeric column with `SUM`, `MIN`, `MAX`, `MEAN`, `COUNT`, or `RANGE`. The request names the worksheet, header row, column, operation, measurement unit, and locale separators when needed. The calculation is stored as `CALCULATED` evidence with its source file hash, row span, method version, and excluded blank, nonnumeric, and formula cell counts. Formula cells are never evaluated or substituted with cached formula results.
+
+A failed first AI reply includes the already saved `chatId` in the error response. The frontend opens that conversation with its stored user message and the failure notice. Retrying then continues the same conversation rather than creating a duplicate. Creating the conversation and its first user message is one atomic database operation.
 
 ## Case outputs
 

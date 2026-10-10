@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  HttpException,
   Injectable,
   NotFoundException,
   ServiceUnavailableException,
@@ -86,28 +87,44 @@ export class ChatService {
         userId: ownerId,
         caseId,
         title: createTitle(dto.message),
+        // The conversation and first message must either both persist or both fail.
+        messages: {
+          create: { role: MessageRole.USER, content: dto.message.trim() },
+        },
       },
+      include: { messages: true },
     });
-    const userMessage = await this.prisma.message.create({
-      data: {
+    const userMessage = chat.messages[0];
+    try {
+      const assistantMessage = await this.reply(
+        chat.id,
+        ownerId,
+        userMessage.id,
+        dto,
+      );
+      return {
         chatId: chat.id,
-        role: MessageRole.USER,
-        content: dto.message.trim(),
-      },
-    });
-
-    const assistantMessage = await this.reply(
-      chat.id,
-      ownerId,
-      userMessage.id,
-      dto,
-    );
-    return {
-      chatId: chat.id,
-      title: chat.title,
-      userMessage,
-      assistantMessage,
-    };
+        title: chat.title,
+        userMessage,
+        assistantMessage,
+      };
+    } catch (error) {
+      if (error instanceof HttpException) {
+        const response = error.getResponse();
+        // Return the saved resource ID so clients can recover without creating a duplicate chat.
+        throw new HttpException(
+          {
+            ...(typeof response === 'string'
+              ? { message: response }
+              : response),
+            chatId: chat.id,
+          },
+          error.getStatus(),
+          { cause: error },
+        );
+      }
+      throw error;
+    }
   }
 
   async addMessage(chatId: string, ownerId: number, dto: SendChatMessageDto) {

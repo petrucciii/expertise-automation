@@ -76,18 +76,43 @@ test('a failed AI response keeps the user message without inventing an assistant
   await expect(page.getByRole('alert')).toContainText(
     'L’assistente non è disponibile',
   );
-  await page
-    .getByRole('link', {
-      name: 'SIMULATE_OVERLOAD · controlla questo incarico',
-      exact: true,
-    })
-    .click();
+  await expect(page).toHaveURL(new RegExp(`/cases/${workspace.caseId}/chat/`));
   await expect(
     page.getByRole('article', { name: 'Il tuo messaggio' }),
   ).toContainText('SIMULATE_OVERLOAD');
   await expect(
     page.getByRole('article', { name: 'Risposta dell’assistente' }),
   ).toHaveCount(0);
+  const savedChats = await workspace.json<Array<{ id: string }>>(
+    `/chats?caseId=${workspace.caseId}`,
+  );
+  expect(savedChats).toHaveLength(1);
+  await page
+    .getByLabel('Messaggio per l’assistente')
+    .fill('Riprova senza simulare il sovraccarico');
+  await page
+    .getByRole('button', { name: 'Invia messaggio', exact: true })
+    .click();
+  await expect(
+    page.getByRole('article', { name: 'Risposta dell’assistente' }),
+  ).toHaveCount(1);
+  expect(
+    await workspace.json(`/chats?caseId=${workspace.caseId}`),
+  ).toHaveLength(1);
+});
+
+test('the empty conversation links to sources in the current case', async ({
+  workspace,
+  page,
+}) => {
+  await workspace.open();
+  await page
+    .getByRole('link', { name: 'Aggiungi una fonte', exact: true })
+    .click();
+  await expect(page).toHaveURL(`/cases/${workspace.caseId}/sources`);
+  await expect(
+    page.getByRole('heading', { name: 'Fonti della pratica', exact: true }),
+  ).toBeVisible();
 });
 
 test('empty document selection prevents sending and an ineligible observation remains editable', async ({

@@ -2039,6 +2039,43 @@ describe('API with real PostgreSQL and the production Nest application', () => {
     ).toBe('DRAFT');
   });
 
+  it('returns a diagnosable readiness error when a deployed schema is missing an event column', async () => {
+    const record = await newCase('Outdated schema regression');
+    await prisma.$executeRaw`ALTER TABLE case_events RENAME COLUMN attribution TO qa_missing_attribution`;
+    try {
+      const response = await api('get', `/cases/${record.id}`).expect(503);
+      expect(response.body).toEqual({
+        code: 'DATABASE_SCHEMA_OUTDATED',
+        message:
+          'Database migrations must be applied before using the application',
+        statusCode: 503,
+      });
+    } finally {
+      await prisma.$executeRaw`ALTER TABLE case_events RENAME COLUMN qa_missing_attribution TO attribution`;
+    }
+    await api('get', `/cases/${record.id}`).expect(200);
+  });
+
+  it('fails the startup migration preflight when the last deployment migration is pending', async () => {
+    await prisma.$executeRaw`UPDATE "_prisma_migrations" SET migration_name = 'qa_pending_event_attribution' WHERE migration_name = '20261010201000_event_attribution'`;
+    try {
+      await expect(
+        promisify(execFile)(
+          process.execPath,
+          ['node_modules/prisma/build/index.js', 'migrate', 'status'],
+          { env: process.env, timeout: 20_000 },
+        ),
+      ).rejects.toMatchObject({ code: 1 });
+    } finally {
+      await prisma.$executeRaw`UPDATE "_prisma_migrations" SET migration_name = '20261010201000_event_attribution' WHERE migration_name = 'qa_pending_event_attribution'`;
+    }
+    await promisify(execFile)(
+      process.execPath,
+      ['node_modules/prisma/build/index.js', 'migrate', 'status'],
+      { env: process.env, timeout: 20_000 },
+    );
+  }, 60_000);
+
   it.each(['/chats', '/chats/new'])(
     'creates scoped chat via %s and preserves messages/citations',
     async (route) => {
@@ -2098,9 +2135,22 @@ describe('API with real PostgreSQL and the production Nest application', () => {
       .send({ caseId: record.id, message: 'Test unsupported answer' })
       .expect(503);
     fetchMock.mockResolvedValueOnce(new Response('', { status: 503 }));
-    await api('post', '/chats')
+    const unavailable = await api('post', '/chats')
       .send({ caseId: record.id, message: 'Test overload' })
       .expect(503);
+    expect(unavailable.body.chatId).toEqual(expect.any(String));
+    const recovered = await api(
+      'get',
+      `/chats/${unavailable.body.chatId}`,
+    ).expect(200);
+    expect(recovered.body.messages).toHaveLength(1);
+    expect(recovered.body.messages[0]).toMatchObject({
+      role: 'USER',
+      content: 'Test overload',
+    });
+    await api('get', `/chats/${unavailable.body.chatId}`, otherToken).expect(
+      404,
+    );
     expect(fetchMock).toHaveBeenCalledTimes(2);
     await api('post', '/chats', otherToken)
       .send({ caseId: record.id, message: 'Test access control' })
