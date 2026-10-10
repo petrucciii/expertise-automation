@@ -19,9 +19,14 @@ describe('pasted JSON data', () => {
     expect(() => parseJsonInput('{"kg":}')).toThrow('JSON non valido');
   });
 
-  it('accepts nested input without recursive stack overflow', () => {
+  it('accepts the API nesting boundary including the request wrapper', () => {
+    expect(() =>
+      parseJsonInput('['.repeat(32) + '0' + ']'.repeat(32)),
+    ).not.toThrow();
+  });
+  it('rejects nesting beyond the API boundary before transport serialization', () => {
     expect(() =>
       parseJsonInput('['.repeat(8000) + '0' + ']'.repeat(8000)),
-    ).not.toThrow();
+    ).toThrow('troppo annidato');
   });
 });

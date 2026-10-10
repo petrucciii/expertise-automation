@@ -10,6 +10,73 @@ import { CaseContext } from '../cases/case-context';
 import ReviewPage from './ReviewPage';
 
 describe('proposal review limits', () => {
+  it('shows the backend proposal values before the surveyor accepts them, including zero', async () => {
+    const proposal: Proposal = {
+      id: 'proposal',
+      caseDocumentId: 'source',
+      caseDocument: source(),
+      documentType: 'sea_waybill',
+      status: 'PENDING',
+      openQuestions: [],
+      createdAt: '2026-10-10T10:00:00Z',
+      reviewedAt: null,
+      model: 'synthetic',
+      suggestions: [
+        {
+          id: 'zero',
+          kind: 'FACT',
+          status: 'PENDING',
+          content: {
+            fieldKey: 'cargo.damaged_cartons',
+            valueText: 'zero cartons',
+            numericValue: 0,
+            unit: 'cartoni',
+          },
+        },
+        {
+          id: 'quantity',
+          kind: 'FACT',
+          status: 'PENDING',
+          content: {
+            fieldKey: 'cargo.pallets',
+            valueText: '29 pallets',
+            numericValue: 29,
+            unit: 'pallet',
+          },
+        },
+        {
+          id: 'text',
+          kind: 'FACT',
+          status: 'PENDING',
+          content: {
+            fieldKey: 'shipment.vessel',
+            valueText: 'M/V Test Horizon',
+            numericValue: null,
+          },
+        },
+      ],
+    };
+    vi.spyOn(api, 'proposals').mockResolvedValue([proposal]);
+    render(
+      <QueryClientProvider
+        client={
+          new QueryClient({ defaultOptions: { queries: { retry: false } } })
+        }
+      >
+        <MemoryRouter>
+          <CaseContext.Provider value={caseRecord}>
+            <ReviewPage />
+          </CaseContext.Provider>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    expect(await screen.findByText('0 cartoni')).toBeVisible();
+    expect(screen.getByText('29 pallet')).toBeVisible();
+    expect(screen.getByText('M/V Test Horizon')).toBeVisible();
+    expect(
+      screen.getByRole('button', { name: 'Accetta selezionati' }),
+    ).toBeDisabled();
+  });
   it('accepts a large proposal in bounded batches and leaves undecided suggestions available', async () => {
     let proposal: Proposal = {
       id: 'proposal',
@@ -27,7 +94,8 @@ describe('proposal review limits', () => {
         status: 'PENDING',
         content: {
           fieldKey: `cargo.statement_${index}`,
-          value: 'Literal source statement',
+          valueText: 'Literal source statement',
+          numericValue: null,
         },
       })),
     };

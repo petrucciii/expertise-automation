@@ -154,7 +154,8 @@ export interface DocumentRegisterEntry {
 }
 export interface SuggestionContent {
   fieldKey?: string;
-  value?: Json;
+  valueText?: string;
+  numericValue?: number | null;
   event?: string;
   date?: string | null;
   dateType?: EventDateType;

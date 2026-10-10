@@ -184,7 +184,7 @@ function ProposalCard({
             </strong>
             <div className="suggestion-value">
               {suggestion.kind === 'FACT'
-                ? `${displayValue(suggestion.content.value)}${suggestion.content.unit ? ` ${suggestion.content.unit}` : ''}`
+                ? `${displayValue(suggestion.content.numericValue ?? suggestion.content.valueText)}${suggestion.content.unit ? ` ${suggestion.content.unit}` : ''}`
                 : suggestion.content.event || suggestion.content.description}
             </div>
             <div className="record-meta">

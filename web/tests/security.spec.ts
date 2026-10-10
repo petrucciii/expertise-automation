@@ -1,4 +1,47 @@
 import { test, expect } from './workspace';
+import { randomUUID } from 'node:crypto';
+import * as fs from 'node:fs/promises';
+import * as path from 'node:path';
+
+test('verification HTML cannot reload an unsaved message or be served from the Vite origin', async ({
+  workspace,
+  page,
+}) => {
+  await workspace.open();
+  const input = page.getByLabel('Messaggio per l’assistente');
+  const draft = 'Bozza non inviata: distinguere quantità e unità del tally.';
+  await input.fill(draft);
+  let navigations = 0;
+  page.on('framenavigated', (frame) => {
+    if (frame === page.mainFrame()) navigations += 1;
+  });
+  const probes: string[] = [];
+  try {
+    for (const directory of [
+      'test-results-live',
+      'playwright-report-live',
+      'coverage',
+    ]) {
+      const name = `watcher-probe-${randomUUID()}.html`;
+      const target = path.resolve(directory, name);
+      await fs.mkdir(path.dirname(target), { recursive: true });
+      probes.push(target);
+      await fs.writeFile(
+        target,
+        '<!doctype html><title>Synthetic verification artifact</title>',
+      );
+      expect((await page.request.get(`/${directory}/${name}`)).status()).toBe(
+        403,
+      );
+    }
+    // Observe past the filesystem debounce: an unintended reload would lose the draft.
+    await page.waitForTimeout(1500);
+    expect(navigations).toBe(0);
+    await expect(input).toHaveValue(draft);
+  } finally {
+    for (const probe of probes) await fs.unlink(probe);
+  }
+});
 
 test('untrusted assistant HTML, scripts, links and remote images stay inert', async ({
   workspace,

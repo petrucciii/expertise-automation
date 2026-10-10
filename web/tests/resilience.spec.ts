@@ -158,7 +158,9 @@ test('empty document selection prevents sending and an ineligible observation re
   await evidence
     .getByRole('button', { name: 'Registra evidenza', exact: true })
     .click();
-  await expect(evidence.getByRole('alert')).toContainText('Controlla i campi');
+  await expect(evidence.getByRole('alert')).toContainText(
+    'Per registrare un rilievo osservato',
+  );
   await expect(evidence.getByLabel(/^Valore/)).toHaveValue(
     'Dichiarazione del mittente che non costituisce un rilievo diretto',
   );

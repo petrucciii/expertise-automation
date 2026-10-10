@@ -49,6 +49,9 @@ test('source upload, proposal review, ledger, calculations, timeline, checks and
   await expect(
     page.getByText('cargo.documented_statement', { exact: true }),
   ).toBeVisible();
+  await expect(page.locator('.suggestion-value')).toHaveText(
+    'Dichiarazione della fonte sintetica',
+  );
   await page
     .getByRole('button', { name: 'Seleziona tutti', exact: true })
     .click();
