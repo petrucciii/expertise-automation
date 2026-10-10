@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { api } from '../../lib/api';
+import { parseJsonInput } from '../../lib/json-input';
 import { useDocuments, useInvalidateCase } from '../../lib/queries';
 import { availabilities, documentTypes } from '../../lib/labels';
 import type { Availability, DocumentRecord, JsonObject } from '../../lib/types';
@@ -85,7 +86,7 @@ function AttachFields({
     try {
       let extra: JsonObject | undefined;
       if (metadata.trim()) {
-        const parsed: unknown = JSON.parse(metadata);
+        const parsed = parseJsonInput(metadata);
         if (
           typeof parsed !== 'object' ||
           parsed === null ||

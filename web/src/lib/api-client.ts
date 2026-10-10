@@ -30,6 +30,13 @@ const defaultMessages: Record<number, string> = {
 export function errorMessage(error: unknown): string {
   if (error instanceof ApiError && error.code === 'DATABASE_SCHEMA_OUTDATED')
     return 'Il database del server richiede un aggiornamento. Applica le migrazioni indicate nella guida di avvio.';
+  if (
+    error instanceof ApiError &&
+    error.status === 400 &&
+    error.message ===
+      'Observed evidence must cite accessible survey notes or an inspection record'
+  )
+    return 'Per registrare un rilievo osservato collega note del perito o un verbale d’ispezione accessibile. Se il dato è riportato da un altro soggetto, scegli Riportato e indica chi lo dichiara.';
   if (error instanceof ApiError)
     return `${defaultMessages[error.status] || 'Il server non ha completato la richiesta.'}${error.status === 400 || error.status === 409 ? ` ${error.message}` : ''}`;
   if (error instanceof Error && error.name === 'TimeoutError')

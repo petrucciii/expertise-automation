@@ -3,6 +3,7 @@ import { useMutation } from '@tanstack/react-query';
 import { Plus, Trash2 } from 'lucide-react';
 import { api } from '../../lib/api';
 import { ApiError } from '../../lib/api-client';
+import { parseJsonInput } from '../../lib/json-input';
 import {
   isObject,
   reportSections,
@@ -81,7 +82,7 @@ export function ArtifactEditor({
     setError(null);
     try {
       const content: unknown = advanced
-        ? JSON.parse(json)
+        ? parseJsonInput(json)
         : structuredContent();
       if (!isObject(content))
         throw new Error('La revisione deve contenere un oggetto strutturato.');
@@ -116,7 +117,7 @@ export function ArtifactEditor({
               setJson(JSON.stringify(structuredContent(), null, 2));
             else {
               try {
-                const parsed: unknown = JSON.parse(json);
+                const parsed = parseJsonInput(json);
                 if (!isObject(parsed)) throw new Error('Contenuto non valido.');
                 // Keep fields edited in JSON when returning to the structured editor.
                 setBaseContent(parsed);

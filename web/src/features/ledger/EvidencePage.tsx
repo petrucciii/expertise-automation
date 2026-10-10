@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { Calculator, Plus } from 'lucide-react';
 import { api } from '../../lib/api';
+import { parseJsonInput } from '../../lib/json-input';
 import { displayValue, evidenceStatuses } from '../../lib/labels';
 import { useInvalidateCase } from '../../lib/queries';
 import type { EvidenceInput, Json, SourceReference } from '../../lib/types';
@@ -129,7 +130,7 @@ function EvidenceFields({ onClose }: { onClose: () => void }) {
           );
         parsed = Number(normalized);
       }
-      if (valueType === 'json') parsed = JSON.parse(value) as Json;
+      if (valueType === 'json') parsed = parseJsonInput(value);
       if (status !== 'UNKNOWN' && !sources.length)
         throw new Error(
           'Collega almeno una fonte oppure indica che il dato non è verificato.',
