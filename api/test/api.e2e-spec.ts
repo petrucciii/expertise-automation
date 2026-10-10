@@ -731,6 +731,18 @@ describe('API with real PostgreSQL and the production Nest application', () => {
               sourceCodes: [source.body.sourceCode],
             },
           ],
+          aiSuggestions: [
+            {
+              id: 'shipment-and-cargo',
+              paragraph: 'Previous suggestion for the target section',
+              sourceCodes: [source.body.sourceCode],
+            },
+            {
+              id: 'economic-assessment',
+              paragraph: 'Untargeted suggestion retained for human review',
+              sourceCodes: [source.body.sourceCode],
+            },
+          ],
         },
       })
       .expect(201);
@@ -756,12 +768,130 @@ describe('API with real PostgreSQL and the production Nest application', () => {
     )
       .send({ enhanced: true, targetSection: 'shipment-and-cargo' })
       .expect(201);
-    expect(draft.body.content.aiSuggestions).toHaveLength(1);
+    expect(draft.body.content.aiSuggestions).toHaveLength(2);
+    expect(draft.body.content.aiSuggestions[0].paragraph).toBe(
+      'Untargeted suggestion retained for human review',
+    );
+    expect(draft.body.content.aiSuggestions[1].paragraph).toBe(
+      'Il documento riporta la quantità dichiarata.',
+    );
+    expect(draft.body.content.sections[0].paragraphs).toEqual([
+      'Current manual rail section',
+    ]);
     const prompt = JSON.parse(fetchMock.mock.calls[0][1]!.body as string)
       .contents[0].parts[0].text as string;
     expect(prompt).toContain('Current manual rail section');
     expect(prompt).toContain('REGISTERED_EXCERPT');
   });
+
+  it.each(['PRELIMINARY_REVIEW', 'SURVEY_REPORT_DRAFT'] as const)(
+    'preserves current manual %s prose when adding suggestions and rebuilds stale prose',
+    async (type) => {
+      const record = await newCase('Synthetic narrative preservation');
+      const generated = await api(
+        'post',
+        `/cases/${record.id}/artifacts/${type}/generate`,
+      )
+        .send({})
+        .expect(201);
+      const content =
+        type === 'PRELIMINARY_REVIEW'
+          ? {
+              ...generated.body.content,
+              limitations: ['MANUAL CURRENT NARRATIVE'],
+            }
+          : {
+              ...generated.body.content,
+              sections: [
+                {
+                  id: 'scope-and-limitations',
+                  heading: 'Scope',
+                  paragraphs: ['MANUAL CURRENT NARRATIVE'],
+                  sourceCodes: [],
+                },
+              ],
+            };
+      await api('post', `/cases/${record.id}/artifacts/${type}/revisions`)
+        .send({ content })
+        .expect(201);
+      fetchMock.mockImplementation(() =>
+        Promise.resolve(
+          modelResponse(
+            type === 'PRELIMINARY_REVIEW' ? { findings: [] } : { sections: [] },
+          ),
+        ),
+      );
+      const augmented = await api(
+        'post',
+        `/cases/${record.id}/artifacts/${type}/generate`,
+      )
+        .send({ enhanced: true })
+        .expect(201);
+      expect(JSON.stringify(augmented.body.content)).toContain(
+        'MANUAL CURRENT NARRATIVE',
+      );
+      expect(augmented.body.status).toBe('DRAFT');
+      const prompt = JSON.parse(fetchMock.mock.calls[0][1]!.body as string)
+        .contents[0].parts[0].text as string;
+      expect(prompt).toContain('MANUAL CURRENT NARRATIVE');
+      await api('patch', `/cases/${record.id}`)
+        .send({ openQuestions: ['Sources changed'] })
+        .expect(200);
+      const rebuilt = await api(
+        'post',
+        `/cases/${record.id}/artifacts/${type}/generate`,
+      )
+        .send({ enhanced: true })
+        .expect(201);
+      expect(JSON.stringify(rebuilt.body.content)).not.toContain(
+        'MANUAL CURRENT NARRATIVE',
+      );
+    },
+  );
+
+  it.each(['PRELIMINARY_REVIEW', 'SURVEY_REPORT_DRAFT'] as const)(
+    'rejects untargeted %s AI suggestions when the current narrative changes during generation',
+    async (type) => {
+      const record = await newCase();
+      const base = await api(
+        'post',
+        `/cases/${record.id}/artifacts/${type}/generate`,
+      )
+        .send({})
+        .expect(201);
+      fetchMock.mockImplementationOnce(async () => {
+        const content =
+          type === 'PRELIMINARY_REVIEW'
+            ? {
+                ...base.body.content,
+                limitations: ['Concurrent surveyor revision'],
+              }
+            : {
+                ...base.body.content,
+                sections: [
+                  {
+                    id: 'scope-and-limitations',
+                    heading: 'Scope',
+                    paragraphs: ['Concurrent surveyor revision'],
+                    sourceCodes: [],
+                  },
+                ],
+              };
+        await api('post', `/cases/${record.id}/artifacts/${type}/revisions`)
+          .send({ content })
+          .expect(201);
+        return modelResponse(
+          type === 'PRELIMINARY_REVIEW' ? { findings: [] } : { sections: [] },
+        );
+      });
+      await api('post', `/cases/${record.id}/artifacts/${type}/generate`)
+        .send({ enhanced: true })
+        .expect(409);
+      expect(
+        await prisma.caseArtifact.count({ where: { caseId: record.id, type } }),
+      ).toBe(2);
+    },
+  );
 
   it('rejects a chat answer when its case changes during generation without saving an assistant message', async () => {
     const record = await newCase();
