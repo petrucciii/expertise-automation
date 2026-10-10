@@ -32,7 +32,8 @@ const test = base.extend<{}, { live: LiveSession }>({
       });
       const page = await context.newPage();
       const email = `qa-live-ui-${randomUUID()}@example.test`;
-      const password = `Qa-${randomBytes(24).toString('base64url')}`;
+      // Generate a fresh QA-only credential in memory; no password is embedded in the repository.
+      const password = randomBytes(24).toString('base64url');
       const inputDir = await fs.mkdtemp(
         path.join(os.tmpdir(), 'expertise-live-ui-inputs-'),
       );
