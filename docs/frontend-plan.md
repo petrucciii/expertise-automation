@@ -20,14 +20,14 @@ Il riferimento richiesto è [ChatGPT](https://chatgpt.com): sidebar persistente,
 
 ## Scelte visive
 
-| Token | Tema chiaro | Tema scuro | Uso |
-| --- | --- | --- | --- |
-| Canvas | `#FFFFFF` | `#212121` | Area centrale |
-| Sidebar | `#F9F9F9` | `#171717` | Navigazione persistente |
-| Surface | `#F4F4F4` | `#303030` | Composer e messaggi utente |
-| Text | `#202020` | `#ECECEC` | Titoli e contenuti |
-| Muted | `#636363` | `#B4B4B4` | Metadati e testo secondario |
-| Border | `#E5E5E5` | `#454545` | Divisori e campi |
+| Token   | Tema chiaro | Tema scuro | Uso                         |
+| ------- | ----------- | ---------- | --------------------------- |
+| Canvas  | `#FFFFFF`   | `#212121`  | Area centrale               |
+| Sidebar | `#F9F9F9`   | `#171717`  | Navigazione persistente     |
+| Surface | `#F4F4F4`   | `#303030`  | Composer e messaggi utente  |
+| Text    | `#202020`   | `#ECECEC`  | Titoli e contenuti          |
+| Muted   | `#636363`   | `#B4B4B4`  | Metadati e testo secondario |
+| Border  | `#E5E5E5`   | `#454545`  | Divisori e campi            |
 
 Tipografia: stack sans-serif di sistema per titoli e contenuti, con pesi e spaziatura distinti; monospace di sistema soltanto per codici fonte, hash e valori strutturati. Questa scelta mantiene la fedeltà al riferimento e non carica font o script di terzi. Spaziatura a multipli di 4/8 px, sidebar 260 px, conversazione circa 760 px, aree dei registri fino a 1100 px. Icone Lucide, azioni nere/chiare, colori semantici limitati agli stati.
 
@@ -55,3 +55,7 @@ Il tratto specifico di Expertise è il riferimento alla fonte: un codice apribil
 Le raccomandazioni automatiche della skill UI suggerivano un'impostazione editoriale con serif e titoli molto grandi. Sono state scartate perché il riferimento esplicito è l'interfaccia ChatGPT. Si conservano invece i criteri di accessibilità, contrasto, feedback degli errori e controllo del carico visivo. Le schermate vuote invitano a usare una funzione reale; nessun dato dimostrativo viene presentato come una pratica dell'utente.
 
 Riferimenti tecnici primari: [React](https://react.dev/learn/creating-a-react-app), [Vite](https://vite.dev/guide/), [TanStack Query](https://tanstack.com/query/latest/docs/framework/react/overview). La mappa funzionale è descritta nel [flusso completo](app-flow.md).
+
+## Completamento
+
+Tutti e sette i passi sono implementati. Le verifiche comprendono build, tipi strict, lint, formato, 32 test unitari/frontend e 19 scenari browser contro backend e PostgreSQL temporanei. La [verifica frontend](frontend-verification.md) riporta la matrice delle funzionalità, gli screenshot ispezionati, i risultati effettivi e i limiti delle prove. L'[audit backend](../api/docs/audit-2026-10-09.md) mantiene separati test mock, OCR reale e chiamate Gemini live.

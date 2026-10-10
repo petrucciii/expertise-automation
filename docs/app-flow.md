@@ -11,10 +11,11 @@ flowchart TD
     C --> D[Registro delle fonti]
     D --> E[Carica un originale oppure registra un estratto o una fonte non disponibile]
     E --> F[Leggi testo, pagine, tabelle e metadati]
-    F --> G{OCR o testo da verificare?}
+    F --> G{Testo OCR da utilizzare?}
     G -->|Sì| H[Il perito controlla e conferma il testo]
-    G -->|No| I[Richiedi proposte di estrazione]
+    G -->|No| I[Richiedi proposte da un originale accessibile]
     H --> I
+    F -->|Visione PNG o JPEG| I
     I --> J[Valuta fatti, eventi e descrizioni delle immagini]
     J --> K[Accetta le proposte selezionate oppure rifiuta]
     E --> L[Inserisci evidenze ed eventi con fonti e attribuzione]
@@ -67,22 +68,22 @@ Le formule Excel rimangono testo: il sistema non le esegue. Un allegato email me
 
 ## 5. Proposte di estrazione
 
-Chiedi l'estrazione AI di una fonte accessibile o di un estratto registrato. Ottieni proposte di fatti e di eventi, con excerpt, pagine e attribuzione quando disponibili. Le immagini PNG/JPEG possono avere anche una proposta di descrizione separata.
+Chiedi l'estrazione AI di un originale accessibile collegato alla pratica. Ottieni proposte di fatti e di eventi, con excerpt, pagine e attribuzione quando disponibili. Le immagini PNG/JPEG possono avere anche una proposta di descrizione separata, senza dover confermare un testo OCR per la sola analisi visiva. Per le fonti segnate “solo estratto”, registra manualmente le evidenze o usa il contesto della chat: la route delle proposte automatiche richiede un originale accessibile.
 
-Seleziona i suggerimenti corretti e accettali oppure rifiuta la proposta. I suggerimenti non selezionati rimangono non accettati. L'accettazione di una descrizione fotografica registra la revisione della descrizione e non crea un rilievo osservato. Una proposta ormai decisa non può essere accettata di nuovo. Se la pratica cambia mentre l'assistente lavora, devi richiedere una nuova estrazione sul contesto aggiornato.
+Seleziona i suggerimenti corretti e accettali, fino a 100 per volta, oppure rifiuta la proposta. I suggerimenti non selezionati rimangono da rivedere. L'accettazione di una descrizione fotografica registra la revisione della descrizione e non crea un rilievo osservato. Una proposta ormai decisa non può essere accettata di nuovo. Se la pratica cambia mentre l'assistente lavora, devi richiedere una nuova estrazione sul contesto aggiornato.
 
 ## 6. Evidenze, quantità e attribuzione
 
 Puoi registrare manualmente un'evidenza con campo, valore, unità, gruppo di confronto, stato e fonti. Il gruppo distingue, per esempio, i due container o un lotto dal totale della spedizione. Un confronto automatico considera soltanto lo stesso campo, la stessa unità e lo stesso gruppo assegnato dal perito.
 
-| Stato | Significato |
-| --- | --- |
-| Osservato | Rilievo diretto supportato da una fonte idonea, come note d'ispezione accessibili. |
-| Riportato | Dichiarazione attribuita a una persona o a un mittente. |
-| Scritto nel documento | Dato presente nella fonte, senza trasformarlo in osservazione diretta. |
-| Calcolato | Risultato deterministico ottenuto da dati e metodo registrati. |
-| Contestato | Dichiarazione o valore in discussione. |
-| Non verificato | Informazione non accertata; la mancanza di una fonte è esplicita. |
+| Stato                 | Significato                                                                        |
+| --------------------- | ---------------------------------------------------------------------------------- |
+| Osservato             | Rilievo diretto supportato da una fonte idonea, come note d'ispezione accessibili. |
+| Riportato             | Dichiarazione attribuita a una persona o a un mittente.                            |
+| Scritto nel documento | Dato presente nella fonte, senza trasformarlo in osservazione diretta.             |
+| Calcolato             | Risultato deterministico ottenuto da dati e metodo registrati.                     |
+| Contestato            | Dichiarazione o valore in discussione.                                             |
+| Non verificato        | Informazione non accertata; la mancanza di una fonte è esplicita.                  |
 
 Le evidenze diverse da “non verificato” richiedono una fonte. La fonte deve essere adatta allo stato scelto: un'email o un ordine giudiziario non documenta da solo un'osservazione diretta del perito. L'assistente non assegna automaticamente lo stato “osservato”.
 
@@ -102,7 +103,7 @@ La revisione preliminare affianca questa checklist ai confronti deterministici e
 
 ## 10. Conversazioni della pratica
 
-Avvia una conversazione sulla pratica e continua dallo storico. Puoi scegliere fino a dieci documenti oppure usare il contesto disponibile della pratica; puoi indirizzare una richiesta a una sezione della relazione. Il contesto comprende una cronologia breve della conversazione e quantità limitate di testo delle fonti.
+Avvia una conversazione sulla pratica e continua dallo storico. Le conversazioni lunghe si aprono sugli ultimi messaggi; puoi caricare i precedenti senza perdere il punto di lettura. Quando lo storico raggiunge il limite delle pagine consultabili, l'app invita ad aprire una nuova conversazione prima di aggiungere una coppia domanda/risposta che non potrebbe mostrare. Puoi scegliere fino a dieci documenti oppure usare il contesto disponibile della pratica; puoi indirizzare una richiesta a una sezione della relazione. Il contesto AI comprende al massimo 12 messaggi precedenti e quantità limitate di testo delle fonti, anche quando lo storico visualizzato è più lungo.
 
 Le risposte mostrano citazioni da aprire e confrontare con l'originale o l'estratto. Se una citazione non corrisponde al testo fornito, la risposta viene rifiutata. Se il servizio AI non risponde, il messaggio dell'utente può rimanere nello storico senza una risposta dell'assistente. Puoi riprovare in una conversazione esistente o aprire quella conservata nello storico. Le conversazioni possono essere eliminate.
 
@@ -112,14 +113,14 @@ La chat non modifica automaticamente le evidenze, le verifiche o la relazione. L
 
 Puoi generare tutte le uscite insieme oppure aggiornare un singolo risultato. La generazione congiunta salva tutti e quattro i risultati o nessuno.
 
-| Risultato | Contenuto | Esportazione |
-| --- | --- | --- |
-| Scheda strutturata | Pratica, fonti, evidenze, eventi, verifiche e domande aperte. | JSON, anche in bozza aggiornata. |
-| Registro documenti | Fonti e loro disponibilità, metadati e originali. | XLSX, anche in bozza aggiornata. |
-| Revisione preliminare | Cronologia, differenze comparabili, fonti mancanti, checklist e limiti. | DOCX dopo approvazione. |
-| Bozza di relazione | Oggetto e limiti, merce/trasporto, eventi, danno/rilievi, valutazione economica e questioni aperte. | DOCX dopo approvazione. |
+| Risultato             | Contenuto                                                                                           | Esportazione                     |
+| --------------------- | --------------------------------------------------------------------------------------------------- | -------------------------------- |
+| Scheda strutturata    | Pratica, fonti, evidenze, eventi, verifiche e domande aperte.                                       | JSON, anche in bozza aggiornata. |
+| Registro documenti    | Fonti e loro disponibilità, metadati e originali.                                                   | XLSX, anche in bozza aggiornata. |
+| Revisione preliminare | Cronologia, differenze comparabili, fonti mancanti, checklist e limiti.                             | DOCX dopo approvazione.          |
+| Bozza di relazione    | Oggetto e limiti, merce/trasporto, eventi, danno/rilievi, valutazione economica e questioni aperte. | DOCX dopo approvazione.          |
 
-Per le due narrative puoi chiedere suggerimenti AI, leggere il contenuto, modificarlo e salvarlo come nuova versione. I suggerimenti restano riconoscibili come proposte. La storia conserva le versioni precedenti. È disponibile soltanto il template generico italiano per danni alle merci; non esiste un'anteprima PDF della relazione.
+Per le due narrative puoi chiedere suggerimenti AI, leggere il contenuto, modificarlo e salvarlo come nuova versione. La generazione con suggerimenti conserva il testo manuale della versione aggiornata e aggiunge le proposte separatamente; su una pratica cambiata ricompone la narrativa dalle evidenze correnti. Puoi limitare i suggerimenti a una sezione della relazione mantenendo quelli delle altre sezioni. La rigenerazione ordinaria ricompone il testo; le versioni precedenti restano nello storico. L'editor completo permette di modificare anche cronologia, verifiche e suggerimenti della narrativa. Una modifica concorrente blocca il salvataggio e lascia disponibile il testo non salvato da copiare. È disponibile soltanto il template generico italiano per danni alle merci; non esiste un'anteprima PDF della relazione.
 
 ## 12. Approvazione, versioni e aggiornamenti
 

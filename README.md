@@ -11,3 +11,5 @@ The [code and security audit](api/docs/audit-2026-10-09.md) records the requirem
 Requirements: Node.js 24.15 or later in the 24.x line, npm, and PostgreSQL. Docker is also required for HTTP integration tests, which create disposable PostgreSQL databases. The automatic suite does not use a real Gemini key or the database configured in your `.env`.
 
 From `api`, run `npm ci` and `npm run check`. Optional `npm run test:ocr` and `npm run test:live` exercise real OCR and Gemini with synthetic documents; the live command sends those synthetic sources to Google and may consume API quota.
+
+From `web`, run `npm ci`, `npm run check`, `npx playwright install chromium`, and `npm run test:e2e` for the browser workflow. The [frontend verification report](docs/frontend-verification.md) maps the implemented screens to the tests and visual checks. GitHub Actions verifies both applications, backend coverage and browser flows.

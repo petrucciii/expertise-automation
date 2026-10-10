@@ -32,12 +32,12 @@
   <text x="602" y="319" class="muted">Originale e hash conservati. Le formule non vengono eseguite.</text>
   <rect x="48" y="237" width="492" height="105" rx="16" class="gate"/>
   <text x="70" y="267" class="heading">Controllo del perito</text>
-  <text x="70" y="294" class="body">Confronta il testo con l'originale e conferma l'OCR.</text>
-  <text x="70" y="319" class="muted">Un testo troncato richiede un estratto più piccolo.</text>
+  <text x="70" y="294" class="body">Conferma l'OCR prima di usarne il testo.</text>
+  <text x="70" y="319" class="muted">La sola analisi visiva PNG/JPEG non richiede conferma OCR.</text>
   <path d="M580 289H540" class="line"/>
   <path d="M294 342V371" class="line"/>
   <rect x="48" y="371" width="492" height="105" rx="16" class="panel"/>
-  <text x="70" y="401" class="heading">Proposte di estrazione</text>
+  <text x="70" y="401" class="heading">Proposte da originali accessibili</text>
   <text x="70" y="428" class="body">Fatti · eventi · excerpt · pagine · attribuzione</text>
   <text x="70" y="452" class="muted">Descrizioni delle immagini separate dai rilievi.</text>
   <rect x="580" y="371" width="492" height="105" rx="16" class="gate"/>
